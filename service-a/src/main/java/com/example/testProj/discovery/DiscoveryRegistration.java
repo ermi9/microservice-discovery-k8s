@@ -28,7 +28,7 @@ public class DiscoveryRegistration {
             Map<String, String> request = new HashMap<>();
             request.put("name", appName);
             request.put("url", serviceUrl);
-            request.put("openapiUrl", serviceUrl + "/api/openapi.json");
+            request.put("openapiUrl", serviceUrl + "/v3/api-docs");
             
             String registerUrl = discoveryServiceUrl + "/register";
             restTemplate.postForObject(registerUrl, request, Map.class);
