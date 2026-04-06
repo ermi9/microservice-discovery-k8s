@@ -1,6 +1,6 @@
 package com.example.testProj.model;
 import java.time.LocalDateTime;
-
+import java.util.Map;
 
 //data model for service registry
 public class Service {
@@ -9,6 +9,7 @@ public class Service {
     private String openapiUrl;
     private String status;
     private LocalDateTime lastHeartbeat;
+    private Map<String, Object> pod;
 
     public Service() {
         // Default constructor for JSON deserialization
@@ -19,8 +20,8 @@ public class Service {
         this.openapiUrl = openapiUrl;
         this.status = "unknown";
         this.lastHeartbeat = LocalDateTime.now();
+        this.pod = null;
     }
-
 
     public String getName() { return this.name; }
     public String getUrl() { return this.url; }
@@ -33,4 +34,6 @@ public class Service {
     public void setUrl(String url) { this.url = url; }
     public void setName(String name) { this.name = name; }
     
+    public Map<String, Object> getPod() { return this.pod; }
+    public void setPod(Map<String, Object> pod) { this.pod = pod; }
 }
