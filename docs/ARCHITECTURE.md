@@ -99,10 +99,7 @@ public String getHealthEndpoint() { ... }
 ```
 
 **Add metrics/observability:**
-```java
-// Could expose via Prometheus endpoint
-// Track: success rate, response times, uptime
-```
+
 
 **Add service dependencies:**
 ```java

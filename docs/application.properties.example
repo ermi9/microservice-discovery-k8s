@@ -1,10 +1,9 @@
-# ============================================================================
-# K8s Service Discovery Framework - Configuration Guide
-# ============================================================================
+**# K8s Service Discovery Framework - Configuration Guide**
 
-# ============================================================================
-# Health Check Configuration
-# ============================================================================
+
+
+**# Health Check Configuration**
+
 
 # How often to check health (milliseconds)
 # Default: 15000 (every 15 seconds)
@@ -22,14 +21,10 @@ health-check.failure-threshold=3
 # Default: 5000
 health-check.timeout-ms=5000
 
-# ============================================================================
-# Service Registry Storage
-# ============================================================================
-registry.file.path=./data/registry.json
 
-# ============================================================================
-# Example Scenarios
-# ============================================================================
+
+**# Example Scenarios**
+
 
 # Development (Fast feedback):
 # health-check.interval-ms=5000
