@@ -1,16 +1,17 @@
 package com.example.testProj.service;
+
 import com.example.testProj.model.Service;
+import com.example.testProj.config.HealthCheckConfig;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import java.io.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
 import jakarta.annotation.PostConstruct;
-
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.RestClientException;
 import java.io.IOException;
-import java.time.LocalDateTime;
 import java.util.*;
 
 @Component
@@ -19,27 +20,26 @@ public class ServiceRegistry {
     @Value("${registry.file.path:./data/registry.json}")
     private String registryFilePath;
     
+    @Autowired
+    private HealthCheckConfig healthCheckConfig;
+    
     private List<Service> services = new ArrayList<>();
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final RestTemplate restTemplate = new RestTemplate();
-
+    
     @PostConstruct
     public void init() {
         loadFromFile();
+        System.out.println("ServiceRegistry initialized with config: " + healthCheckConfig);
     }
-
     
     public void register(Service service) {
-        // Check if service already exists
         services.removeIf(s -> s.getName().equals(service.getName()));
-        
-        // Add new service
         service.setStatus("unknown");
-        service.setLastHeartbeat(LocalDateTime.now());
+        service.resetFailures();
         services.add(service);
-        
-        // Save to file
         saveToFile();
+        System.out.println("Service registered: " + service.getName());
     }
     
     public List<Service> getAllServices() {
@@ -53,19 +53,52 @@ public class ServiceRegistry {
                 .orElse(null);
     }
     
-    @Scheduled(fixedRate = 15000)
+    @Scheduled(fixedDelayString = "#{@healthCheckConfig.getIntervalMs()}")
     public void healthCheck() {
         for (Service service : services) {
-            try {
-                String healthUrl = service.getUrl() + "/health";
-                restTemplate.getForObject(healthUrl, String.class);
-                service.setStatus("healthy");
-                service.setLastHeartbeat(LocalDateTime.now());
-            } catch (Exception e) {
-                service.setStatus("unhealthy");
-            }
+            checkServiceHealth(service);
         }
         saveToFile();
+    }
+    
+    private void checkServiceHealth(Service service) {
+        String healthUrl = service.getUrl() + service.getHealthEndpoint();
+        
+        boolean success = false;
+        for (int attempt = 0; attempt <= healthCheckConfig.getMaxRetries(); attempt++) {
+            try {
+                restTemplate.getForObject(healthUrl, String.class);
+                success = true;
+                break;
+            } catch (RestClientException e) {
+                if (attempt < healthCheckConfig.getMaxRetries()) {
+                    System.out.println("Health check retry " + (attempt + 1) + " for " + service.getName());
+                    try {
+                        Thread.sleep(500);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
+            }
+        }
+        
+        if (success) {
+            service.resetFailures();
+            service.setStatus("healthy");
+        } else {
+            service.incrementFailure();
+            
+            if (service.getConsecutiveFailures() >= healthCheckConfig.getFailureThreshold()) {
+                service.setStatus("unhealthy");
+                System.out.println("Service marked UNHEALTHY: " + service.getName() + 
+                    " (failures: " + service.getConsecutiveFailures() + ")");
+            } else {
+                service.setStatus("degraded");
+                System.out.println("Service degraded: " + service.getName() + 
+                    " (failures: " + service.getConsecutiveFailures() + "/" + 
+                    healthCheckConfig.getFailureThreshold() + ")");
+            }
+        }
     }
     
     private void saveToFile() {
