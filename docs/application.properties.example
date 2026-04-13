@@ -1,0 +1,48 @@
+# ============================================================================
+# K8s Service Discovery Framework - Configuration Guide
+# ============================================================================
+
+# ============================================================================
+# Health Check Configuration
+# ============================================================================
+
+# How often to check health (milliseconds)
+# Default: 15000 (every 15 seconds)
+health-check.interval-ms=15000
+
+# Retry attempts if health check fails
+# Default: 2 (tries 3 times total: initial + 2 retries)
+health-check.max-retries=2
+
+# Consecutive failures before marking unhealthy
+# Default: 3
+health-check.failure-threshold=3
+
+# HTTP request timeout (milliseconds)
+# Default: 5000
+health-check.timeout-ms=5000
+
+# ============================================================================
+# Service Registry Storage
+# ============================================================================
+registry.file.path=./data/registry.json
+
+# ============================================================================
+# Example Scenarios
+# ============================================================================
+
+# Development (Fast feedback):
+# health-check.interval-ms=5000
+# health-check.max-retries=1
+# health-check.failure-threshold=2
+
+# Production (Stable, tolerant):
+# health-check.interval-ms=30000
+# health-check.max-retries=3
+# health-check.failure-threshold=5
+
+# Critical Services (Strict monitoring):
+# health-check.interval-ms=10000
+# health-check.max-retries=0
+# health-check.failure-threshold=1
+

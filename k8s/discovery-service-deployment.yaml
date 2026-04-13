@@ -14,9 +14,10 @@ spec:
       labels:
         app: discovery-service
     spec:
+      serviceAccountName: discovery-service
       containers:
       - name: discovery-service
-        image: discovery-service:v2
+        image: discovery-service:latest
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8080
