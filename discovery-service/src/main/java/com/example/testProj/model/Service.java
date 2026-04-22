@@ -1,26 +1,47 @@
 package com.example.testProj.model;
-import java.util.Map;
-import com.fasterxml.jackson.annotation.JsonIgnore;
 
-/**
- * Service model - represents a registered microservice
- */
+import jakarta.persistence.*;
+import java.time.LocalDateTime;
+import java.util.Map;
+import java.util.UUID;
+
+@Entity
+@Table(name = "services")
 public class Service {
+    
+    @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
+    private UUID id;
+    
+    @Column(unique = true, nullable = false)
     private String name;
+    
+    @Column(nullable = false)
     private String url;
+    
+    @Column(nullable = false)
     private String openapiUrl;
-    private String status;
+    
+    @Column(nullable = false)
+    private String status; // "healthy", "degraded", "unhealthy", "unknown"
+    
+    @Column(nullable = false)
+    private LocalDateTime createdAt;
+    
+    @Column(nullable = false)
+    private LocalDateTime updatedAt;
+    
+    @Column(nullable = false)
+    private int consecutiveFailures = 0;
+    
+    @Column(nullable = false)
+    private String healthEndpoint = "/health";
+    
+    @Transient
     private Map<String, Object> pod;
     
-    // NEW FIELDS for health checking
-    @JsonIgnore
-    private String healthEndpoint = "/health";        // Configurable endpoint to check
-    
-    @JsonIgnore
-    private int consecutiveFailures = 0;              // Track failures in a row
-    
+    // Constructors
     public Service() {
-        // Default constructor for JSON deserialization
     }
     
     public Service(String name, String url, String openapiUrl) {
@@ -28,29 +49,101 @@ public class Service {
         this.url = url;
         this.openapiUrl = openapiUrl;
         this.status = "unknown";
-        this.pod = null;
-        this.healthEndpoint = "/health";
         this.consecutiveFailures = 0;
+        this.healthEndpoint = "/health";
+        this.createdAt = LocalDateTime.now();
+        this.updatedAt = LocalDateTime.now();
     }
     
-    // Original getters and setters
-    public String getName() { return this.name; }
-    public String getUrl() { return this.url; }
-    public String getOpenapiUrl() { return this.openapiUrl; }
-    public String getStatus() { return this.status; }
-    public void setStatus(String status) { this.status = status; }
-    public void setOpenapiUrl(String openapiUrl) { this.openapiUrl = openapiUrl; }
-    public void setUrl(String url) { this.url = url; }
-    public void setName(String name) { this.name = name; }
-    public Map<String, Object> getPod() { return this.pod; }
-    public void setPod(Map<String, Object> pod) { this.pod = pod; }
+    // Getters and Setters
+    public UUID getId() {
+        return id;
+    }
     
-    // NEW: Health endpoint getter/setter
-    public String getHealthEndpoint() { return this.healthEndpoint; }
-    public void setHealthEndpoint(String endpoint) { this.healthEndpoint = endpoint; }
+    public void setId(UUID id) {
+        this.id = id;
+    }
     
-    // NEW: Failure counter methods
-    public int getConsecutiveFailures() { return this.consecutiveFailures; }
-    public void incrementFailure() { this.consecutiveFailures++; }
-    public void resetFailures() { this.consecutiveFailures = 0; }
+    public String getName() {
+        return name;
+    }
+    
+    public void setName(String name) {
+        this.name = name;
+    }
+    
+    public String getUrl() {
+        return url;
+    }
+    
+    public void setUrl(String url) {
+        this.url = url;
+    }
+    
+    public String getOpenapiUrl() {
+        return openapiUrl;
+    }
+    
+    public void setOpenapiUrl(String openapiUrl) {
+        this.openapiUrl = openapiUrl;
+    }
+    
+    public String getStatus() {
+        return status;
+    }
+    
+    public void setStatus(String status) {
+        this.status = status;
+        this.updatedAt = LocalDateTime.now();
+    }
+    
+    public LocalDateTime getCreatedAt() {
+        return createdAt;
+    }
+    
+    public void setCreatedAt(LocalDateTime createdAt) {
+        this.createdAt = createdAt;
+    }
+    
+    public LocalDateTime getUpdatedAt() {
+        return updatedAt;
+    }
+    
+    public void setUpdatedAt(LocalDateTime updatedAt) {
+        this.updatedAt = updatedAt;
+    }
+    
+    public int getConsecutiveFailures() {
+        return consecutiveFailures;
+    }
+    
+    public void setConsecutiveFailures(int consecutiveFailures) {
+        this.consecutiveFailures = consecutiveFailures;
+    }
+    
+    public void incrementFailure() {
+        this.consecutiveFailures++;
+        this.updatedAt = LocalDateTime.now();
+    }
+    
+    public void resetFailures() {
+        this.consecutiveFailures = 0;
+        this.updatedAt = LocalDateTime.now();
+    }
+    
+    public String getHealthEndpoint() {
+        return healthEndpoint;
+    }
+    
+    public void setHealthEndpoint(String healthEndpoint) {
+        this.healthEndpoint = healthEndpoint;
+    }
+    
+    public Map<String, Object> getPod() {
+        return this.pod;
+    }
+    
+    public void setPod(Map<String, Object> pod) {
+        this.pod = pod;
+    }
 }

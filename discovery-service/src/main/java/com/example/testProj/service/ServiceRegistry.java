@@ -1,64 +1,70 @@
 package com.example.testProj.service;
 
-import com.example.testProj.model.Service;
 import com.example.testProj.config.HealthCheckConfig;
+import com.example.testProj.model.Service;
+import com.example.testProj.repository.ServiceRepository;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import java.io.*;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import jakarta.annotation.PostConstruct;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.client.RestClientException;
-import java.io.IOException;
-import java.util.*;
+import jakarta.annotation.PostConstruct;
+import java.util.List;
+import java.util.Optional;
 
 @Component
 public class ServiceRegistry {
     
-    @Value("${registry.file.path:./data/registry.json}")
-    private String registryFilePath;
+    @Autowired
+    private ServiceRepository serviceRepository;
     
     @Autowired
     private HealthCheckConfig healthCheckConfig;
     
-    private List<Service> services = new ArrayList<>();
-    private final ObjectMapper objectMapper = new ObjectMapper();
     private final RestTemplate restTemplate = new RestTemplate();
     
     @PostConstruct
     public void init() {
-        loadFromFile();
         System.out.println("ServiceRegistry initialized with config: " + healthCheckConfig);
     }
     
     public void register(Service service) {
-        services.removeIf(s -> s.getName().equals(service.getName()));
-        service.setStatus("unknown");
-        service.resetFailures();
-        services.add(service);
-        saveToFile();
-        System.out.println("Service registered: " + service.getName());
+        // Check if service already exists by name
+        Optional<Service> existing = serviceRepository.findByName(service.getName());
+        
+        if (existing.isPresent()) {
+            // Update existing service
+            Service existingService = existing.get();
+            existingService.setUrl(service.getUrl());
+            existingService.setOpenapiUrl(service.getOpenapiUrl());
+            existingService.setStatus("unknown");
+            existingService.resetFailures();
+            serviceRepository.save(existingService);
+            System.out.println("Service updated: " + service.getName());
+        } else {
+            // Create new service
+            service.setStatus("unknown");
+            service.resetFailures();
+            serviceRepository.save(service);
+            System.out.println("Service registered: " + service.getName());
+        }
     }
     
     public List<Service> getAllServices() {
-        return new ArrayList<>(services);
+        return serviceRepository.findAll();
     }
     
     public Service getServiceByName(String name) {
-        return services.stream()
-                .filter(s -> s.getName().equals(name))
-                .findFirst()
-                .orElse(null);
+        Optional<Service> service = serviceRepository.findByName(name);
+        return service.orElse(null);
     }
     
     @Scheduled(fixedDelayString = "#{@healthCheckConfig.getIntervalMs()}")
     public void healthCheck() {
+        List<Service> services = getAllServices();
         for (Service service : services) {
             checkServiceHealth(service);
         }
-        saveToFile();
     }
     
     private void checkServiceHealth(Service service) {
@@ -99,45 +105,8 @@ public class ServiceRegistry {
                     healthCheckConfig.getFailureThreshold() + ")");
             }
         }
-    }
-    
-    private void saveToFile() {
-        try {
-            File file = new File(registryFilePath);
-            file.getParentFile().mkdirs();
-            
-            Map<String, Object> registry = new HashMap<>();
-            registry.put("services", services);
-            
-            objectMapper.writerWithDefaultPrettyPrinter()
-                    .writeValue(file, registry);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-    
-    private void loadFromFile() {
-        try {
-            File file = new File(registryFilePath);
-            if (!file.exists()) {
-                services = new ArrayList<>();
-                return;
-            }
-            
-            Map<String, Object> registry = objectMapper.readValue(file, Map.class);
-            List<Map<String, Object>> servicesList = (List<Map<String, Object>>) registry.get("services");
-            
-            services = new ArrayList<>();
-            for (Map<String, Object> svc : servicesList) {
-                Service s = new Service();
-                s.setName((String) svc.get("name"));
-                s.setUrl((String) svc.get("url"));
-                s.setOpenapiUrl((String) svc.get("openapiUrl"));
-                s.setStatus((String) svc.get("status"));
-                services.add(s);
-            }
-        } catch (IOException e) {
-            services = new ArrayList<>();
-        }
+        
+        // Save updated service status to database
+        serviceRepository.save(service);
     }
 }

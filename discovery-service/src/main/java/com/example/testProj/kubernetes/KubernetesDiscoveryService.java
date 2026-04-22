@@ -7,7 +7,9 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import com.example.testProj.service.CacheService;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -22,6 +24,11 @@ public class KubernetesDiscoveryService {
     private String basePath;
     private String token;
     private ObjectMapper mapper;
+    
+    @Autowired
+    private CacheService cacheService;
+    
+    private static final long CACHE_TTL_SECONDS = 30; // Cache K8s data for 30 seconds
 
     public KubernetesDiscoveryService() {
         try {
@@ -44,8 +51,37 @@ public class KubernetesDiscoveryService {
         return new ArrayList<>();
     }
 
-    //get pods by label selector, this will be used to find pods associated with a service based on a label like "app=serviceName"
+    /**
+     * Get pods by label selector, with caching
+     * First checks Redis cache (TTL 30s)
+     * If cache miss, queries K8s API and stores in Redis
+     */
     public List<Map<String, Object>> getPodsByLabel(String namespace, String labelSelector) {
+        String cacheKey = "k8s:pods:" + namespace + ":" + labelSelector;
+        
+        // Check cache first
+        Object cachedPods = cacheService.get(cacheKey);
+        if (cachedPods != null) {
+            System.out.println("Cache HIT for key: " + cacheKey);
+            return (List<Map<String, Object>>) cachedPods;
+        }
+        
+        System.out.println("Cache MISS for key: " + cacheKey + " - querying K8s API");
+        List<Map<String, Object>> pods = queryK8sForPods(namespace, labelSelector);
+        
+        // Store in cache with 30-second TTL
+        if (!pods.isEmpty()) {
+            cacheService.set(cacheKey, pods, CACHE_TTL_SECONDS);
+            System.out.println("Cached pods for " + labelSelector + " (TTL: " + CACHE_TTL_SECONDS + "s)");
+        }
+        
+        return pods;
+    }
+    
+    /**
+     * Internal method: Query K8s API directly
+     */
+    private List<Map<String, Object>> queryK8sForPods(String namespace, String labelSelector) {
         List<Map<String, Object>> pods = new ArrayList<>();
         
         try {
@@ -77,14 +113,16 @@ public class KubernetesDiscoveryService {
                 }
             }
         } catch (Exception e) {
-            System.err.println("Error getting pods by label: " + e.getMessage());
+            System.err.println("Error querying K8s API: " + e.getMessage());
             e.printStackTrace();
         }
 
         return pods;
     }
 
-    //readiness probe check for pods, this checks the conditions of the pod status to determine if it's ready
+    /**
+     * Check readiness probe from pod status
+     */
     private boolean isPodReady(Map<String, Object> status) {
         try {
             List<Map<String, Object>> conditions = (List<Map<String, Object>>) status.get("conditions");
