@@ -2,6 +2,7 @@ package com.example.testProj.service;
 
 import com.example.testProj.kubernetes.KubernetesDiscoveryService;
 import com.example.testProj.model.Service;
+import com.example.testProj.repository.ServiceRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -16,6 +17,9 @@ public class KubernetesPollingService {
     
     @Autowired
     private KubernetesDiscoveryService kubernetesDiscoveryService;
+    
+    @Autowired
+    private ServiceRepository serviceRepository;
     
     /**
      * Poll K8s API every 15 seconds to get latest Pod readiness status
@@ -42,7 +46,7 @@ public class KubernetesPollingService {
                     }
                 }
                 
-                // 
+                // Update service status based on pod readiness (pod data is fetched live by controller, not stored)
                 if (readyPod != null) {
                     service.setStatus("healthy");
                 } else if (pods.isEmpty()) {
@@ -50,9 +54,10 @@ public class KubernetesPollingService {
                 } else {
                     service.setStatus("not-ready");
                 }
-                
+
+                serviceRepository.save(service);
+
             } catch (Exception e) {
-                service.setStatus("error");
                 System.err.println("Error polling K8s for service " + service.getName() + ": " + e.getMessage());
             }
         }

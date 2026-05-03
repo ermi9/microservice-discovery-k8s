@@ -1,50 +1,38 @@
 package com.example.testProj.model;
 
-import jakarta.persistence.*;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.Transient;
+import org.springframework.data.redis.core.RedisHash;
+import org.springframework.data.redis.core.index.Indexed;
 import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.UUID;
 
-@Entity
-@Table(name = "services")
+@RedisHash("services")
 public class Service {
     
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
     
-    @Column(unique = true, nullable = false)
+    @Indexed
     private String name;
-    
-    @Column(nullable = false)
     private String url;
-    
-    @Column(nullable = false)
     private String openapiUrl;
-    
-    @Column(nullable = false)
     private String status; // "healthy", "degraded", "unhealthy", "unknown"
-    
-    @Column(nullable = false)
     private LocalDateTime createdAt;
-    
-    @Column(nullable = false)
     private LocalDateTime updatedAt;
-    
-    @Column(nullable = false)
     private int consecutiveFailures = 0;
-    
-    @Column(nullable = false)
     private String healthEndpoint = "/health";
-    
     @Transient
     private Map<String, Object> pod;
     
     // Constructors
     public Service() {
+        this.id = UUID.randomUUID();
     }
     
     public Service(String name, String url, String openapiUrl) {
+        this.id = UUID.randomUUID();
         this.name = name;
         this.url = url;
         this.openapiUrl = openapiUrl;

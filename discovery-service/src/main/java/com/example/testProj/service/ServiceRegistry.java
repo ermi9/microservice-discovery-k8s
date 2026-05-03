@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.client.RestClientException;
 import jakarta.annotation.PostConstruct;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -51,7 +52,11 @@ public class ServiceRegistry {
     }
     
     public List<Service> getAllServices() {
-        return serviceRepository.findAll();
+        // CrudRepository.findAll() returns Iterable, convert to List
+        Iterable<Service> iterable = serviceRepository.findAll();
+        List<Service> services = new ArrayList<>();
+        iterable.forEach(services::add);
+        return services;
     }
     
     public Service getServiceByName(String name) {
@@ -106,7 +111,7 @@ public class ServiceRegistry {
             }
         }
         
-        // Save updated service status to database
+        // Save updated service status to Redis
         serviceRepository.save(service);
     }
 }
