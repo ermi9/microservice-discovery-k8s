@@ -16,6 +16,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+
 
 @Service
 public class KubernetesDiscoveryService {
@@ -85,7 +88,8 @@ public class KubernetesDiscoveryService {
         List<Map<String, Object>> pods = new ArrayList<>();
         
         try {
-            String url = basePath + "/api/v1/namespaces/" + namespace + "/pods?labelSelector=" + labelSelector;
+            String encodedLabelSelector=URLEncoder.encode(labelSelector, StandardCharsets.UTF_8.toString());
+            String url = basePath + "/api/v1/namespaces/" + namespace + "/pods?labelSelector=" + encodedLabelSelector;
             Request request = new Request.Builder()
                     .url(url)
                     .header("Authorization", "Bearer " + token)

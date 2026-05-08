@@ -15,7 +15,7 @@ public class PodSnapshot {
     
     @JsonIgnore
     @Indexed
-    private UUID serviceId;
+    private String serviceName;
     
     private String podName;
     private String podIp;
@@ -28,7 +28,7 @@ public class PodSnapshot {
         this.id = UUID.randomUUID();
     }
     
-    public PodSnapshot(UUID serviceId, String podName, String podIp, String phase, Boolean ready) {
+    public PodSnapshot(String serviceName, String podName, String podIp, String phase, Boolean ready) {
         this.id = UUID.randomUUID();
         this.serviceId = serviceId;
         this.podName = podName;

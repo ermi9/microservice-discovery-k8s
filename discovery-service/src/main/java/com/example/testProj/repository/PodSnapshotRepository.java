@@ -8,5 +8,5 @@ import java.util.UUID;
 
 @Repository
 public interface PodSnapshotRepository extends CrudRepository<PodSnapshot, UUID> {
-    List<PodSnapshot> findByServiceId(UUID serviceId);
+    List<PodSnapshot> findByServiceName(String serviceName);
 }

@@ -3,19 +3,18 @@ package com.example.testProj.model;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.annotation.Transient;
 import org.springframework.data.redis.core.RedisHash;
-import org.springframework.data.redis.core.index.Indexed;
+
 import java.time.LocalDateTime;
 import java.util.Map;
-import java.util.UUID;
+
 
 @RedisHash("services")
 public class Service {
     
     @Id
-    private UUID id;
-    
-    @Indexed
     private String name;
+    
+ 
     private String url;
     private String openapiUrl;
     private String status; // "healthy", "degraded", "unhealthy", "unknown"
@@ -27,12 +26,10 @@ public class Service {
     private Map<String, Object> pod;
     
     // Constructors
-    public Service() {
-        this.id = UUID.randomUUID();
-    }
+
     
     public Service(String name, String url, String openapiUrl) {
-        this.id = UUID.randomUUID();
+
         this.name = name;
         this.url = url;
         this.openapiUrl = openapiUrl;

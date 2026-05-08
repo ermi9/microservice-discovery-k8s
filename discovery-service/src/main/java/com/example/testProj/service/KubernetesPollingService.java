@@ -54,7 +54,7 @@ public class KubernetesPollingService {
                 } else {
                     service.setStatus("not-ready");
                 }
-
+                service.setUpdatedAt(java.time.LocalDateTime.now());
                 serviceRepository.save(service);
 
             } catch (Exception e) {

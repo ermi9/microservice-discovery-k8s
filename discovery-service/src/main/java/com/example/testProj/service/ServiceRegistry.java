@@ -31,7 +31,7 @@ public class ServiceRegistry {
     
     public void register(Service service) {
         // Check if service already exists by name
-        Optional<Service> existing = serviceRepository.findByName(service.getName());
+        Optional<Service> existing = serviceRepository.findById(service.getName());
         
         if (existing.isPresent()) {
             // Update existing service
@@ -60,7 +60,8 @@ public class ServiceRegistry {
     }
     
     public Service getServiceByName(String name) {
-        Optional<Service> service = serviceRepository.findByName(name);
+    //changed, to findbyId to directly look up in redis
+        Optional<Service> service = serviceRepository.findById(name);
         return service.orElse(null);
     }
     
