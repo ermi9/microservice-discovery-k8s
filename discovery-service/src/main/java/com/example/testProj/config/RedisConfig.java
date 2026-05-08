@@ -1,12 +1,15 @@
 package com.example.testProj.config;
 
+import io.lettuce.core.ReadFrom;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.data.convert.ReadingConverter;
 import org.springframework.data.convert.WritingConverter;
-import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.connection.RedisStaticMasterReplicaConfiguration;
+import org.springframework.data.redis.connection.lettuce.LettuceClientConfiguration;
+import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.convert.RedisCustomConversions;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
@@ -43,9 +46,24 @@ public class RedisConfig {
         }
     }
 
+    // --- NEW MASTER/REPLICA TOPOLOGY ---
+    @Bean
+    public LettuceConnectionFactory redisConnectionFactory() {
+        // Route writes to the master, add the replica nodes
+        RedisStaticMasterReplicaConfiguration topology = new RedisStaticMasterReplicaConfiguration("redis-master", 6379);
+        topology.addNode("redis-replica", 6379);
+
+        // Force reads to be distributed across the replicas
+        LettuceClientConfiguration clientConfig = LettuceClientConfiguration.builder()
+                .readFrom(ReadFrom.REPLICA_PREFERRED)
+                .build();
+
+        return new LettuceConnectionFactory(topology, clientConfig);
+    }
+
     @Bean
     @ConditionalOnMissingBean
-    public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory connectionFactory) {
+    public RedisTemplate<String, Object> redisTemplate(LettuceConnectionFactory connectionFactory) {
         RedisTemplate<String, Object> template = new RedisTemplate<>();
         template.setConnectionFactory(connectionFactory);
 
