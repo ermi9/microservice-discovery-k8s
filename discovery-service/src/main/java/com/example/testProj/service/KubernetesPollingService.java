@@ -11,21 +11,22 @@ import java.util.Map;
 
 @Component
 public class KubernetesPollingService {
-    
+
     @Autowired
     private ServiceRegistry serviceRegistry;
-    
+
     @Autowired
     private KubernetesDiscoveryService kubernetesDiscoveryService;
-    
+
     @Autowired
     private ServiceRepository serviceRepository;
-    
-    /**
-     * Poll K8s API every 15 seconds to get latest Pod readiness status
-     */
+
+    @Autowired
+    private LeaderElectionService leaderElectionService;
+
     @Scheduled(fixedRate = 15000)
     public void pollKubernetesStatus() {
+        if (!leaderElectionService.isLeader()) return;
         List<Service> services = serviceRegistry.getAllServices();
         
         for (Service service : services) {

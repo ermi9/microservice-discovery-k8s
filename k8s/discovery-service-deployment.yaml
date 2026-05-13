@@ -26,6 +26,10 @@ spec:
           value: "redis-master"
         - name: SPRING_DATA_REDIS_PORT
           value: "6379"
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
         livenessProbe:
           httpGet:
             path: /health

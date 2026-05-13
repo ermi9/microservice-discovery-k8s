@@ -4,23 +4,17 @@ import com.example.testProj.config.HealthCheckConfig;
 import com.example.testProj.model.Service;
 import com.example.testProj.repository.ServiceRepository;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.client.RestClientException;
 import jakarta.annotation.PostConstruct;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 
 @Component
 public class ServiceRegistry {
-
-    private static final String HEALTH_CHECK_LOCK_KEY = "discovery:health-check-lock";
-    private static final Duration LOCK_TTL = Duration.ofSeconds(60);
 
     @Autowired
     private ServiceRepository serviceRepository;
@@ -29,7 +23,7 @@ public class ServiceRegistry {
     private HealthCheckConfig healthCheckConfig;
 
     @Autowired
-    private RedisTemplate<String, Object> redisTemplate;
+    private LeaderElectionService leaderElectionService;
 
     private final RestTemplate restTemplate = new RestTemplate();
 
@@ -75,32 +69,13 @@ public class ServiceRegistry {
         return service.orElse(null);
     }
 
-    /**
-     * Distributed health check: only the replica that acquires the Redis lock runs
-     * the check cycle. The 60-second TTL ensures the lock expires if the holder crashes
-     * before releasing it, so another replica can pick it up on the next interval.
-     */
     @Scheduled(fixedDelayString = "#{@healthCheckConfig.getIntervalMs()}")
     public void healthCheck() {
-        String lockValue = UUID.randomUUID().toString();
-        Boolean acquired = redisTemplate.opsForValue()
-                .setIfAbsent(HEALTH_CHECK_LOCK_KEY, lockValue, LOCK_TTL);
+        if (!leaderElectionService.isLeader()) return;
 
-        if (!Boolean.TRUE.equals(acquired)) {
-            return; // Another replica already holds the lock
-        }
-
-        try {
-            List<Service> services = getAllServices();
-            for (Service service : services) {
-                checkServiceHealth(service);
-            }
-        } finally {
-            // Only release if we still own the lock (guards against TTL expiry + re-acquisition)
-            Object current = redisTemplate.opsForValue().get(HEALTH_CHECK_LOCK_KEY);
-            if (lockValue.equals(String.valueOf(current))) {
-                redisTemplate.delete(HEALTH_CHECK_LOCK_KEY);
-            }
+        List<Service> services = getAllServices();
+        for (Service service : services) {
+            checkServiceHealth(service);
         }
     }
 
