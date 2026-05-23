@@ -1,109 +1,185 @@
-# K8s Service Discovery Framework - Architecture
+# EDA Microservice Discovery System — Architecture
 
-## System Components
+A Kubernetes-native service registry and event-driven routing layer. Services register on startup, the discovery service tracks pod health via Kubernetes Watch streams, and an API gateway updates its routing table from Kafka events. No service URL is hardcoded anywhere.
 
-The framework consists of these key components:
+---
 
-### 1. DiscoveryController (REST API)
-- `POST /register` - Services register on startup
-- `GET /services` - Return all services with pod info
-- `GET /services/{name}` - Get specific service details
-- `GET /health` - Health probe for K8s liveness
+## Components
 
-### 2. ServiceRegistry (Core Logic)
-- Maintains in-memory service list
-- Runs health checks every 15 seconds (configurable)
-- Tracks consecutive failures per service
-- Persists registry to disk
-- Uses HealthCheckConfig for all settings
+```mermaid
+flowchart TB
+    Client([Client])
 
-### 3. HealthCheckConfig (Configuration)
-- Reads from `application.properties`
-- Configurable: interval, retries, thresholds, timeout
-- Injected into ServiceRegistry via Spring
+    subgraph Cluster["Kubernetes cluster"]
+        subgraph DS_SS["discovery-service (StatefulSet, 3 replicas)"]
+            DS0[discovery-service-0]
+            DS1[discovery-service-1]
+            DS2[discovery-service-2]
+        end
 
-### 4. KubernetesDiscoveryService (K8s Integration)
-- Queries K8s API for pod information
-- Uses service account token for authentication
-- Extracts: pod name, IP, status, readiness
+        subgraph RedisTier["Redis tier"]
+            RM[(redis-master)]
+            RR0[(redis-replica-0)]
+            RR1[(redis-replica-1)]
+        end
 
-### 5. KubernetesPollingService (Scheduler)
-- Runs every 15 seconds
-- Calls KubernetesDiscoveryService
-- Attaches pod info to services
+        KAFKA[Kafka broker - KRaft mode]
+        K8SAPI[Kubernetes API server]
+        GW[api-gateway - Spring Cloud Gateway]
+        SA[service-a - order service]
+        SB[service-b - inventory service]
+    end
 
-## Data Flow
-
-### Registration (On Service Startup)
-Service starts
-→ DiscoveryRegistration listener fires
-→ POST /register {name, url, openapiUrl}
-→ ServiceRegistry.register()
-→ Store in-memory + persist to disk
-
-### Health Check (Every 15 Seconds)
-@Scheduled timer fires
-→ For each service:
-→ GET {service.url}/health
-→ If fails: retry 2 times with 500ms delay
-→ Increment/reset consecutive failures
-→ Mark status: healthy/degraded/unhealthy
-
-### Pod Discovery (Every 15 Seconds)
-KubernetesPollingService runs
-→ GET /api/v1/namespaces/default/pods?labelSelector=app={serviceName}
-→ Extract: name, IP, phase, readiness status
-→ Attach to service object
-
-## Key Design Patterns
-
-### 1. Configuration-Driven
-All behavior is externalized to `application.properties`:
-- No hardcoded timeouts
-- Easy to adjust per environment
-- Different scenarios: dev, prod, critical
-
-### 2. Resilient Health Checks
-- Retry logic handles transient failures
-- Failure threshold prevents flapping
-- Only mark unhealthy after N consecutive failures
-
-### 3. K8s Native
-- Uses service account token (auto-mounted)
-- Queries official K8s API
-- Pod discovery built-in
-
-### 4. In-Memory + Persistent
-- Fast in-memory reads
-- Registry persisted to disk
-- Survives restarts
-
-## Class Responsibilities
-
-| Class | Responsibility |
-|-------|---|
-| `HealthCheckConfig` | Read configuration from properties |
-| `Service` | Data model + failure counter |
-| `ServiceRegistry` | Core registry logic, health checks, persistence |
-| `KubernetesDiscoveryService` | Query K8s API for pod info |
-| `KubernetesPollingService` | Scheduled pod discovery task |
-| `DiscoveryController` | REST API endpoints |
-
-## Extension Points
-
-**Add custom health endpoints:**
-```java
-// Service model already supports this:
-private String healthEndpoint = "/health";
-public String getHealthEndpoint() { ... }
+    DS0 -->|writes| RM
+    DS1 -->|writes| RM
+    DS2 -->|writes| RM
+    DS0 -.->|reads| RR0
+    DS1 -.->|reads| RR0
+    DS2 -.->|reads| RR1
+    RM -->|async replication| RR0
+    RM -->|async replication| RR1
+    DS0 -->|"Watch stream (per partition)"| K8SAPI
+    DS0 -->|publish ServiceEvent| KAFKA
+    DS1 -->|publish ServiceEvent| KAFKA
+    DS2 -->|publish ServiceEvent| KAFKA
+    KAFKA -->|consume ServiceEvent| GW
+    SA -->|POST /register| DS0
+    SB -->|POST /register| DS0
+    Client -->|POST /orders| SA
+    SA -->|"/route/service-b/..."| GW
+    GW -->|forward| SB
 ```
 
-**Add metrics/observability:**
+| Component | Role |
+|---|---|
+| `discovery-service` (3 replicas, StatefulSet) | Registry owner. Per-partition leaders watch Kubernetes and publish events; all replicas serve reads. |
+| Redis (1 master + 2 replicas) | Shared coordination — leader-election keys, `resourceVersion` keys, pub/sub relay channel. Registry data is in-memory + local JSON per replica. |
+| Kafka (single broker, KRaft) | Event bus. Carries `SERVICE_REGISTERED`, `SERVICE_DEREGISTERED`, `STATUS_CHANGED`. Keyed by service name for per-service ordering. |
+| `api-gateway` (Spring Cloud Gateway) | Consumes Kafka events, maintains live routing table, exposes `/services` catalog and `/openapi/{name}` spec proxy. |
+| `service-a` | Order service. Calls the gateway to reach `service-b` — no hardcoded URL. |
+| `service-b` | Inventory service. Synchronized stock reservation. |
 
+---
 
-**Add service dependencies:**
-```java
-// Service model could store: dependsOn: [service-b]
-// Validate dependency chains on registration
+## Data Flows
+
+### Service registration
+
+```mermaid
+sequenceDiagram
+    participant SB as service-b
+    participant DS as discovery-service (any replica)
+    participant RM as Redis master
+    participant K as Kafka topic: service-events
+    participant GW as api-gateway
+
+    SB->>DS: POST /register {name, url, openapiUrl}
+    activate DS
+    DS->>DS: ServiceRegistry.register() — idempotent upsert
+    DS->>RM: persist service entry
+    DS->>K: publish SERVICE_REGISTERED key=service-b
+    DS-->>SB: 200 OK
+    deactivate DS
+
+    K->>GW: consume event
+    activate GW
+    GW->>GW: RouteDefinitionWriter.save() / RefreshRoutesEvent
+    GW->>GW: RouteRegistry.add(RouteInfo)
+    Note right of GW: Route /route/service-b/** now live
+    deactivate GW
 ```
 
+### Pod state change (Kubernetes Watch)
+
+```mermaid
+sequenceDiagram
+    participant K8S as Kubernetes API
+    participant L as Leader of partition N
+    participant F as Follower of partition N
+    participant RM as Redis master
+    participant KAFKA as Kafka
+    participant GW as api-gateway
+
+    K8S->>L: event line (ADDED/MODIFIED/DELETED)
+    activate L
+    L->>L: parse event / map to status
+    L->>RM: update registry entry
+    L->>RM: SET partition:N:rv:service-b = newResourceVersion
+    L->>KAFKA: publish STATUS_CHANGED (generation=g)
+    L->>RM: publish RelayEvent on partition:N:relay channel
+    deactivate L
+
+    RM->>F: pub/sub delivery
+    activate F
+    F->>F: update warmState[service-b]
+    deactivate F
+
+    KAFKA->>GW: consume STATUS_CHANGED
+    activate GW
+    alt status is unhealthy or unavailable
+        GW->>GW: remove route for service-b
+    else status is healthy
+        GW->>GW: ensure route is active
+    end
+    deactivate GW
+```
+
+### Request flow
+
+```mermaid
+sequenceDiagram
+    actor Client
+    participant SA as service-a (order)
+    participant GW as api-gateway
+    participant SB as service-b (inventory)
+
+    Client->>SA: POST /orders {productId, quantity, customer}
+    activate SA
+    SA->>GW: POST /route/service-b/products/P001/reserve?quantity=2
+    activate GW
+    GW->>GW: StripPrefix=2
+    GW->>SB: POST /products/P001/reserve?quantity=2
+    activate SB
+    SB->>SB: synchronized { check stock / deduct }
+    SB-->>GW: 200 OK {id, name, price, stock: 40}
+    deactivate SB
+    GW-->>SA: 200 OK
+    deactivate GW
+    SA->>SA: record confirmed order
+    SA-->>Client: 200 OK {orderId, total, status: confirmed}
+    deactivate SA
+```
+
+---
+
+## Leader Election
+
+Each replica runs `tryAcquireOrRenew()` every 3 s per partition.
+
+| Setting | Value |
+|---|---|
+| Lock key | `discovery:partition:N:leader` |
+| TTL | 10 s |
+| Renewal | Lua `GET + EXPIRE` (atomic) |
+| Identity | `POD_NAME` (Kubernetes Downward API) |
+| Graceful release | `@PreDestroy` — sub-second failover |
+| Hard crash failover | ≤ 10 s (TTL expiry) |
+
+Followers subscribe to `partition:N:relay` (Redis pub/sub) to stay warm without holding Watch streams. On winning a partition, a replica unsubscribes and opens its own Watch from the last stored `resourceVersion`.
+
+---
+
+## Deployment
+
+| Manifest | Deploys |
+|---|---|
+| `k8s/discovery-service-deployment.yaml` | StatefulSet (3 replicas), headless + ClusterIP Services |
+| `k8s/redis-deployment.yaml` | redis-master (AOF + PVC), redis-replica ×2 |
+| `k8s/kafka.yaml` | Single-broker Kafka (KRaft) |
+| `k8s/api-gateway-deployment.yaml` | api-gateway |
+| `k8s/service-a-deployment.yaml` | service-a (with `preStop` deregister hook) |
+| `k8s/service-b-deployment.yaml` | service-b (with `preStop` deregister hook) |
+
+Local dev: `docker compose -f discovery-service/docker-compose.yml up`
+
+Consistency guarantees and failure scenarios: see `docs/CONSISTENCY_REPORT.md`.
