@@ -1,13 +1,13 @@
-package com.example.testProj;
+package com.eda.order;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class TestProjApplication {
+public class OrderServiceApplication {
 
 	public static void main(String[] args) {
-		SpringApplication.run(TestProjApplication.class, args);
+		SpringApplication.run(OrderServiceApplication.class, args);
 	}
 
 }
