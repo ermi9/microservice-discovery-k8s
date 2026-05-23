@@ -1,4 +1,4 @@
-package com.example.testProj.discovery;
+package com.eda.inventory.registration;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;

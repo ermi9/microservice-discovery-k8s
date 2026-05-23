@@ -1,10 +1,10 @@
-package com.example.testProj;
+package com.eda.inventory;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
-class TestProjApplicationTests {
+class InventoryServiceApplicationTests {
 
 	@Test
 	void contextLoads() {
