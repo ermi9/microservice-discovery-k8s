@@ -1,4 +1,4 @@
-package com.example.testProj.service;
+package com.eda.discovery.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -11,9 +11,6 @@ public class CacheService {
     @Autowired
     private RedisTemplate<String, Object> redisTemplate;
     
-    /**
-     * Get a value from cache
-     */
     public Object get(String key) {
         try {
             return redisTemplate.opsForValue().get(key);
@@ -23,9 +20,6 @@ public class CacheService {
         }
     }
     
-    /**
-     * Set a value in cache with TTL (Time To Live)
-     */
     public void set(String key, Object value, long ttlSeconds) {
         try {
             redisTemplate.opsForValue().set(key, value, ttlSeconds, TimeUnit.SECONDS);
@@ -34,9 +28,6 @@ public class CacheService {
         }
     }
     
-    /**
-     * Delete a key from cache
-     */
     public void delete(String key) {
         try {
             redisTemplate.delete(key);
@@ -45,9 +36,6 @@ public class CacheService {
         }
     }
     
-    /**
-     * Check if a key exists in cache
-     */
     public boolean exists(String key) {
         try {
             return Boolean.TRUE.equals(redisTemplate.hasKey(key));

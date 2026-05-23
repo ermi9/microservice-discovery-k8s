@@ -1,6 +1,6 @@
-package com.example.testProj.service;
+package com.eda.discovery.service;
 
-import com.example.testProj.config.LeaderElectionConfig;
+import com.eda.discovery.config.LeaderElectionConfig;
 import jakarta.annotation.PreDestroy;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;

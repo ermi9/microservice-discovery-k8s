@@ -1,4 +1,4 @@
-package com.example.testProj.kubernetes;
+package com.eda.discovery.kubernetes;
 
 import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.util.ClientBuilder;
@@ -9,7 +9,7 @@ import okhttp3.Request;
 import okhttp3.Response;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import com.example.testProj.service.CacheService;
+import com.eda.discovery.service.CacheService;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -54,11 +54,6 @@ public class KubernetesDiscoveryService {
         return new ArrayList<>();
     }
 
-    /**
-     * Get pods by label selector, with caching
-     * First checks Redis cache (TTL 30s)
-     * If cache miss, queries K8s API and stores in Redis
-     */
     public List<Map<String, Object>> getPodsByLabel(String namespace, String labelSelector) {
         String cacheKey = "k8s:pods:" + namespace + ":" + labelSelector;
         
@@ -81,9 +76,6 @@ public class KubernetesDiscoveryService {
         return pods;
     }
     
-    /**
-     * Internal method: Query K8s API directly
-     */
     private List<Map<String, Object>> queryK8sForPods(String namespace, String labelSelector) {
         List<Map<String, Object>> pods = new ArrayList<>();
         
@@ -124,9 +116,6 @@ public class KubernetesDiscoveryService {
         return pods;
     }
 
-    /**
-     * Check readiness probe from pod status
-     */
     private boolean isPodReady(Map<String, Object> status) {
         try {
             List<Map<String, Object>> conditions = (List<Map<String, Object>>) status.get("conditions");

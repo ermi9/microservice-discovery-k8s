@@ -1,4 +1,4 @@
-package com.example.testProj.config;
+package com.eda.discovery.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;

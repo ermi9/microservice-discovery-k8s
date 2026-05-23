@@ -1,9 +1,9 @@
-package com.example.testProj;
+package com.eda.discovery;
 
-import com.example.testProj.config.HealthCheckConfig;
-import com.example.testProj.model.Service;
-import com.example.testProj.repository.ServiceRepository;
-import com.example.testProj.service.ServiceRegistry;
+import com.eda.discovery.config.HealthCheckConfig;
+import com.eda.discovery.model.Service;
+import com.eda.discovery.repository.ServiceRepository;
+import com.eda.discovery.service.ServiceRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;

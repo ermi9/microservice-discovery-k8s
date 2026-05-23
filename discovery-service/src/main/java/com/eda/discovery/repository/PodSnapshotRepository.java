@@ -1,6 +1,6 @@
-package com.example.testProj.repository;
+package com.eda.discovery.repository;
 
-import com.example.testProj.model.PodSnapshot;
+import com.eda.discovery.model.PodSnapshot;
 import org.springframework.data.repository.CrudRepository;
 import org.springframework.stereotype.Repository;
 import java.util.List;

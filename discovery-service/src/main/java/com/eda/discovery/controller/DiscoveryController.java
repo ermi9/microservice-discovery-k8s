@@ -1,8 +1,8 @@
-package com.example.testProj.controller;
+package com.eda.discovery.controller;
 
-import com.example.testProj.kubernetes.KubernetesDiscoveryService;
-import com.example.testProj.model.Service;
-import com.example.testProj.service.ServiceRegistry;
+import com.eda.discovery.kubernetes.KubernetesDiscoveryService;
+import com.eda.discovery.model.Service;
+import com.eda.discovery.service.ServiceRegistry;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -76,7 +76,15 @@ public class DiscoveryController {
             return null;
         }
     }
-  //health of the discovery service  
+    @DeleteMapping("/services/{name}")
+    public ResponseEntity<?> deregister(@PathVariable String name) {
+        if (serviceRegistry.getServiceByName(name) == null) {
+            return ResponseEntity.notFound().build();
+        }
+        serviceRegistry.deregister(name);
+        return ResponseEntity.ok(Map.of("message", "Service deregistered", "service", name));
+    }
+
     @GetMapping("/health")
     public ResponseEntity<String> health() {
         return ResponseEntity.ok("OK");

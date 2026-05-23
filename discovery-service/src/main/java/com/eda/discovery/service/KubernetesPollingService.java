@@ -1,8 +1,8 @@
-package com.example.testProj.service;
+package com.eda.discovery.service;
 
-import com.example.testProj.kubernetes.KubernetesDiscoveryService;
-import com.example.testProj.model.Service;
-import com.example.testProj.repository.ServiceRepository;
+import com.eda.discovery.kubernetes.KubernetesDiscoveryService;
+import com.eda.discovery.model.Service;
+import com.eda.discovery.repository.ServiceRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -24,14 +24,15 @@ public class KubernetesPollingService {
     @Autowired
     private LeaderElectionService leaderElectionService;
 
-    @Scheduled(fixedRate = 15000)
+    // No longer scheduled — KubernetesWatchService replaced the polling loop (Task 2).
+    // Kept here as a manual fallback; can be called directly if the watch stream fails and
+    // a one-time sync is needed.
     public void pollKubernetesStatus() {
         if (!leaderElectionService.isLeader()) return;
         List<Service> services = serviceRegistry.getAllServices();
-        
+
         for (Service service : services) {
             try {
-                // Query K8s for Pods with label 
                 String labelSelector = "app=" + service.getName();
                 List<Map<String, Object>> pods = kubernetesDiscoveryService.getPodsByLabel("default", labelSelector);
                 

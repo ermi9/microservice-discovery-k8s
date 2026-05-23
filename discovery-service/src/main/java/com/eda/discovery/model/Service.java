@@ -1,4 +1,4 @@
-package com.example.testProj.model;
+package com.eda.discovery.model;
 
 import org.springframework.data.annotation.Id;
 import org.springframework.data.annotation.Transient;

@@ -1,25 +1,16 @@
-package com.example.testProj.config;
+package com.eda.discovery.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
-/**
- * Health check configuration that reads from application.properties
- * 
- * Example:
- * health-check.interval-ms=15000
- * health-check.max-retries=2
- * health-check.failure-threshold=3
- * health-check.timeout-ms=5000
- */
 @Component
 @ConfigurationProperties(prefix = "health-check")
 public class HealthCheckConfig {
-    
-    private long intervalMs = 15000;        // Check health every 15 seconds
-    private int maxRetries = 2;             // Retry failed checks 2 times
-    private int failureThreshold = 3;       // Mark unhealthy after 3 consecutive failures
-    private long timeoutMs = 5000;          // 5 second timeout per HTTP request
+
+    private long intervalMs = 15000;
+    private int maxRetries = 2;
+    private int failureThreshold = 3;
+    private long timeoutMs = 5000;
     
     public long getIntervalMs() {
         return intervalMs;
