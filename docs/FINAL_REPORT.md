@@ -64,68 +64,48 @@ Four distinct workstreams produced the current system:
 
 The diagram below shows the components and their dependencies. Each box is a deployable unit; each arrow is a real network call or stream.
 
-```plantuml
-@startuml
-skinparam componentStyle rectangle
-skinparam shadowing false
-skinparam roundCorner 8
-skinparam defaultFontName Helvetica
+```mermaid
+flowchart TB
+    Client([Client])
 
-package "Kubernetes cluster" {
+    subgraph Cluster["Kubernetes cluster"]
+        subgraph DS_SS["discovery-service (StatefulSet, 3 replicas)"]
+            DS0[discovery-service-0]
+            DS1[discovery-service-1]
+            DS2[discovery-service-2]
+        end
 
-  package "discovery-service (StatefulSet, 3 replicas)" {
-    [discovery-service-0] as DS0
-    [discovery-service-1] as DS1
-    [discovery-service-2] as DS2
-  }
+        subgraph RedisTier["Redis tier"]
+            RM[(redis-master)]
+            RR0[(redis-replica-0)]
+            RR1[(redis-replica-1)]
+        end
 
-  package "Redis tier" {
-    database "redis-master" as RM
-    database "redis-replica-0" as RR0
-    database "redis-replica-1" as RR1
-  }
+        KAFKA[Kafka broker - KRaft mode]
+        K8SAPI[Kubernetes API server]
+        GW[api-gateway - Spring Cloud Gateway]
+        SA[service-a - order service]
+        SB[service-b - inventory service]
+    end
 
-  [Kafka broker\n(KRaft mode)] as KAFKA
-  [Kubernetes API server] as K8S
-
-  [api-gateway\n(Spring Cloud Gateway)] as GW
-  [service-a\n(order service)] as SA
-  [service-b\n(inventory service)] as SB
-}
-
-actor Client
-
-' Discovery to Redis
-DS0 --> RM : writes
-DS1 --> RM : writes
-DS2 --> RM : writes
-DS0 ..> RR0 : reads
-DS1 ..> RR0 : reads
-DS2 ..> RR1 : reads
-RM --> RR0 : async replication
-RM --> RR1 : async replication
-
-' Discovery to Kubernetes (leader only)
-DS0 --> K8S : Watch stream\n(per partition)
-
-' Discovery to Kafka
-DS0 --> KAFKA : publish ServiceEvent
-DS1 --> KAFKA : publish ServiceEvent
-DS2 --> KAFKA : publish ServiceEvent
-
-' Gateway consumes events
-KAFKA --> GW : consume ServiceEvent
-
-' Service registration
-SA --> DS0 : POST /register
-SB --> DS0 : POST /register
-
-' Request flow through gateway
-Client --> SA : POST /orders
-SA --> GW : /route/service-b/...
-GW --> SB : forward
-
-@enduml
+    DS0 -->|writes| RM
+    DS1 -->|writes| RM
+    DS2 -->|writes| RM
+    DS0 -.->|reads| RR0
+    DS1 -.->|reads| RR0
+    DS2 -.->|reads| RR1
+    RM -->|async replication| RR0
+    RM -->|async replication| RR1
+    DS0 -->|"Watch stream (per partition)"| K8SAPI
+    DS0 -->|publish ServiceEvent| KAFKA
+    DS1 -->|publish ServiceEvent| KAFKA
+    DS2 -->|publish ServiceEvent| KAFKA
+    KAFKA -->|consume ServiceEvent| GW
+    SA -->|POST /register| DS0
+    SB -->|POST /register| DS0
+    Client -->|POST /orders| SA
+    SA -->|"/route/service-b/..."| GW
+    GW -->|forward| SB
 ```
 
 ### 2.2 What each component does
@@ -215,108 +195,93 @@ Single broker in KRaft mode (no ZooKeeper). Topic `service-events` with service 
 
 When a new service starts, it registers with the discovery service. The discovery service stores the entry, publishes a Kafka event, and the gateway picks up the event and adds a route.
 
-```plantuml
-@startuml
-skinparam sequenceArrowThickness 1.5
-skinparam shadowing false
-skinparam defaultFontName Helvetica
+```mermaid
+sequenceDiagram
+    participant SB as service-b
+    participant DS as discovery-service (any replica)
+    participant RM as Redis master
+    participant K as Kafka topic: service-events
+    participant GW as api-gateway
 
-participant "service-b" as SB
-participant "discovery-service\n(any replica)" as DS
-database "Redis master" as RM
-queue "Kafka topic\nservice-events" as K
-participant "api-gateway" as GW
+    SB->>DS: POST /register {name, url, openapiUrl}
+    activate DS
+    DS->>DS: ServiceRegistry.register() — idempotent upsert
+    DS->>RM: persist service entry
+    DS->>K: publish SERVICE_REGISTERED key=service-b
+    DS-->>SB: 200 OK
+    deactivate DS
 
-SB -> DS : POST /register\n{name, url, openapiUrl}
-activate DS
-DS -> DS : ServiceRegistry.register()\n(idempotent upsert)
-DS -> RM : persist service entry
-DS -> K : publish SERVICE_REGISTERED\nkey=service-b
-deactivate DS
-DS --> SB : 200 OK
-
-K -> GW : consume event
-activate GW
-GW -> GW : RouteDefinitionWriter.save()\nRefreshRoutesEvent
-GW -> GW : RouteRegistry.add(RouteInfo)
-deactivate GW
-note right of GW : Route /route/service-b/**\nnow live
-@enduml
+    K->>GW: consume event
+    activate GW
+    GW->>GW: RouteDefinitionWriter.save() / RefreshRoutesEvent
+    GW->>GW: RouteRegistry.add(RouteInfo)
+    Note right of GW: Route /route/service-b/** now live
+    deactivate GW
 ```
 
 ### 4.2 Pod state change (via Kubernetes Watch)
 
 The leader of the partition that owns `service-b` has an open Watch stream against the Kubernetes API. When Kubernetes reports a pod-state change, the leader updates the registry, publishes a Kafka event, and broadcasts a relay event to followers in the same partition.
 
-```plantuml
-@startuml
-skinparam sequenceArrowThickness 1.5
-skinparam shadowing false
-skinparam defaultFontName Helvetica
+```mermaid
+sequenceDiagram
+    participant K8S as Kubernetes API
+    participant L as Leader of partition N
+    participant F as Follower of partition N
+    participant RM as Redis master
+    participant KAFKA as Kafka
+    participant GW as api-gateway
 
-participant "Kubernetes\nAPI" as K8S
-participant "Leader of\npartition N" as L
-participant "Follower of\npartition N" as F
-database "Redis master" as RM
-queue "Kafka" as KAFKA
-participant "api-gateway" as GW
+    K8S->>L: event line (ADDED/MODIFIED/DELETED)
+    activate L
+    L->>L: parse event / map to status
+    L->>RM: update registry entry
+    L->>RM: SET partition:N:rv:service-b = newResourceVersion
+    L->>KAFKA: publish STATUS_CHANGED (generation=g)
+    L->>RM: publish RelayEvent on partition:N:relay channel
+    deactivate L
 
-K8S -> L : event line (ADDED/MODIFIED/DELETED)
-activate L
-L -> L : parse event\nmap to status
-L -> RM : update registry entry
-L -> RM : SET partition:N:rv:service-b\n= newResourceVersion
-L -> KAFKA : publish STATUS_CHANGED\n(generation=g)
-L -> RM : publish RelayEvent on\npartition:N:relay channel
-deactivate L
+    RM->>F: pub/sub delivery
+    activate F
+    F->>F: update warmState[service-b]
+    deactivate F
 
-RM -> F : pub/sub delivery
-activate F
-F -> F : update warmState[service-b]
-deactivate F
-
-KAFKA -> GW : consume STATUS_CHANGED
-activate GW
-alt status is unhealthy or unavailable
-  GW -> GW : remove route for service-b
-else status is healthy
-  GW -> GW : ensure route is active
-end
-deactivate GW
-@enduml
+    KAFKA->>GW: consume STATUS_CHANGED
+    activate GW
+    alt status is unhealthy or unavailable
+        GW->>GW: remove route for service-b
+    else status is healthy
+        GW->>GW: ensure route is active
+    end
+    deactivate GW
 ```
 
 ### 4.3 Request flow (order placement)
 
 The client calls `service-a`, which calls the gateway, which forwards to `service-b`. `service-a` never knows the address of `service-b`.
 
-```plantuml
-@startuml
-skinparam sequenceArrowThickness 1.5
-skinparam shadowing false
-skinparam defaultFontName Helvetica
+```mermaid
+sequenceDiagram
+    actor Client
+    participant SA as service-a (order)
+    participant GW as api-gateway
+    participant SB as service-b (inventory)
 
-actor Client
-participant "service-a\n(order)" as SA
-participant "api-gateway" as GW
-participant "service-b\n(inventory)" as SB
-
-Client -> SA : POST /orders\n{productId, quantity, customer}
-activate SA
-SA -> GW : POST /route/service-b/products/P001/reserve?quantity=2
-activate GW
-GW -> GW : StripPrefix=2
-GW -> SB : POST /products/P001/reserve?quantity=2
-activate SB
-SB -> SB : synchronized {\n  check stock\n  deduct\n}
-SB --> GW : 200 OK\n{id, name, price, stock: 40}
-deactivate SB
-GW --> SA : 200 OK
-deactivate GW
-SA -> SA : record confirmed order
-SA --> Client : 200 OK\n{orderId, total, status: confirmed}
-deactivate SA
-@enduml
+    Client->>SA: POST /orders {productId, quantity, customer}
+    activate SA
+    SA->>GW: POST /route/service-b/products/P001/reserve?quantity=2
+    activate GW
+    GW->>GW: StripPrefix=2
+    GW->>SB: POST /products/P001/reserve?quantity=2
+    activate SB
+    SB->>SB: synchronized { check stock / deduct }
+    SB-->>GW: 200 OK {id, name, price, stock: 40}
+    deactivate SB
+    GW-->>SA: 200 OK
+    deactivate GW
+    SA->>SA: record confirmed order
+    SA-->>Client: 200 OK {orderId, total, status: confirmed}
+    deactivate SA
 ```
 
 ### 4.4 Leader handoff after a crash
@@ -543,5 +508,5 @@ Sensible next steps include Redis Sentinel or Redis Cluster for higher write ava
 
 - All section numbering and headings exactly as above.
 - All tables in sections 1.4, 2.2, 3.1, 3.2, 5.3, 5.5, 7.1, 7.4, and 8.1.
-- The three PlantUML diagrams in section 4 (registration, pod state change, request flow) and the component diagram in section 2.1. These should be rendered to PNG via a PlantUML tool and embedded as figures, matching the grayscale styling used in earlier figures (`#E8E8E8 / #D0D0D0 / #B0B0B0` fills, `#555555` borders).
+- The three Mermaid diagrams in section 4 (registration, pod state change, request flow) and the component diagram in section 2.1. These should be rendered to PNG via the Mermaid CLI (`mmdc -i FINAL_REPORT.md`) or exported from GitHub preview, then embedded as figures.
 - Code blocks rendered in a monospaced font with light gray background shading.
