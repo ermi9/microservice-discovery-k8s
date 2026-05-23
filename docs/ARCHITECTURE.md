@@ -182,4 +182,4 @@ Followers subscribe to `partition:N:relay` (Redis pub/sub) to stay warm without 
 
 Local dev: `docker compose -f discovery-service/docker-compose.yml up`
 
-Consistency guarantees and failure scenarios: see `docs/CONSISTENCY_REPORT.md`.
+Consistency guarantees and failure scenarios: see `docs/CONSISTENCY_REPORT.docx`.
