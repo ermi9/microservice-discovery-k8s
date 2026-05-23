@@ -23,6 +23,29 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+
+  kafka:
+    image: apache/kafka:3.7.0
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    ports:
+      - "9092:9092"
+    networks:
+      - discovery-network
+    healthcheck:
+      test: ["CMD", "/opt/kafka/bin/kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     
 
   discovery-service:
@@ -36,7 +59,7 @@ services:
       - SPRING_DATASOURCE_PASSWORD=registry_pass
       - SPRING_JPA_HIBERNATE_DDL_AUTO=update
       - SPRING_REDIS_HOST=redis
-      - SPRING_REDIS_PORT=6349
+      - SPRING_REDIS_PORT=6379
     depends_on:
       postgres:
         condition: service_healthy
@@ -64,6 +87,18 @@ services:
     networks:
       - discovery-network
 
+  api-gateway:
+    image: api-gateway:latest
+    ports:
+      - "8083:8080"
+    environment:
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - discovery-network
+
   service-a:
     image: service-a:latest
     ports:
@@ -71,12 +106,12 @@ services:
     environment:
       - APP_NAME=service-a
       - APP_SERVICE_URL=http://service-a:8080
-      - SERVICE_B_URL=http://service-b:8080
+      - GATEWAY_URL=http://api-gateway:8080
       - DISCOVERY_SERVICE_URL=http://discovery-service:8080
     depends_on:
       discovery-service:
         condition: service_healthy
-      service-b:
+      api-gateway:
         condition: service_started
     networks:
       - discovery-network
