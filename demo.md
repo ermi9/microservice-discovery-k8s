@@ -1,3 +1,4 @@
+```mermaid
 flowchart TD
     %% Styling Definitions
     classDef user fill:#e1bee7,stroke:#8e24aa,stroke-width:2px,color:#000
@@ -49,3 +50,4 @@ flowchart TD
     KafkaBiz -- "5. Consumes & Acts Independently" --> ServiceB
     ServiceB -- "6. Publishes StockReservedEvent" --> KafkaBiz
     KafkaBiz -. "Completes Saga" .-> ServiceA
+```
