@@ -1,5 +1,6 @@
 package com.eda.discovery.kafka;
 
+import com.eda.discovery.config.KafkaTopicConfig;
 import com.eda.discovery.model.ServiceEvent;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -8,7 +9,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class ServiceEventPublisher {
 
-    static final String TOPIC = "service-events";
+    static final String TOPIC = KafkaTopicConfig.SERVICE_EVENTS_TOPIC;
 
     @Autowired
     private KafkaTemplate<String, ServiceEvent> kafkaTemplate;
