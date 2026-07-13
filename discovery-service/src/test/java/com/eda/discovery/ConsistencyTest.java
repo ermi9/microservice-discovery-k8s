@@ -1,6 +1,7 @@
 package com.eda.discovery;
 
 import com.eda.discovery.config.HealthCheckConfig;
+import com.eda.discovery.kafka.ServiceEventPublisher;
 import com.eda.discovery.model.Service;
 import com.eda.discovery.repository.ServiceRepository;
 import com.eda.discovery.service.ServiceRegistry;
@@ -46,6 +47,9 @@ class ConsistencyTest {
 
     @Mock
     private ValueOperations<String, Object> valueOps;
+
+    @Mock
+    private ServiceEventPublisher eventPublisher;
 
     @InjectMocks
     private ServiceRegistry serviceRegistry;
