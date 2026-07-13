@@ -1,43 +1,109 @@
-**# K8s Service Discovery Framework - Configuration Guide**
+
+# EDA Microservice Discovery System — Configuration Reference
+# Copy relevant sections into application.properties and adjust for your env.
 
 
 
-**# Health Check Configuration**
+
+spring.application.name=eda-discovery-service
+server.port=8080
 
 
-# How often to check health (milliseconds)
-# Default: 15000 (every 15 seconds)
+# Redis
+# The discovery service uses two Lettuce connections:
+#   1. Primary (master + replicas) — registry reads with ReadFrom.REPLICA_PREFERRED
+#   2. Direct master — leader-election keys and pub/sub relay (separate factory)
+#
+# In Kubernetes: redis-master and redis-replica are ClusterIP service names.
+# Locally (Docker Compose): use localhost or the compose service name.
+
+spring.data.redis.host=redis-master
+spring.data.redis.port=6379
+spring.data.redis.timeout=2000ms
+
+
+#   Kafka 
+# Topic: service-events  |  Keyed by service name (per-service ordering)
+# Events: SERVICE_REGISTERED, SERVICE_DEREGISTERED, STATUS_CHANGED
+
+spring.kafka.bootstrap-servers=kafka:9092
+spring.kafka.producer.key-serializer=org.apache.kafka.common.serialization.StringSerializer
+spring.kafka.producer.value-serializer=org.springframework.kafka.support.serializer.JsonSerializer
+
+
+#   Health Check 
+# Health checks run only on the global leader replica.
+# A service is marked unhealthy after failure-threshold consecutive failures.
+# Status progression: healthy → degraded → unhealthy
+
+# How often to run health checks (ms)
 health-check.interval-ms=15000
 
-# Retry attempts if health check fails
-# Default: 2 (tries 3 times total: initial + 2 retries)
+# Retry attempts per check (total attempts = 1 + max-retries)
 health-check.max-retries=2
 
-# Consecutive failures before marking unhealthy
-# Default: 3
+# Consecutive failures before marking a service unhealthy
 health-check.failure-threshold=3
 
-# HTTP request timeout (milliseconds)
-# Default: 5000
+# HTTP request timeout per attempt (ms)
 health-check.timeout-ms=5000
 
+# Scenario presets:
+#
+# Development — fast feedback
+#   health-check.interval-ms=5000
+#   health-check.max-retries=1
+#   health-check.failure-threshold=2
+#
+# Production — stable and tolerant
+#   health-check.interval-ms=30000
+#   health-check.max-retries=3
+#   health-check.failure-threshold=5
+#
+# Critical services — strict monitoring
+#   health-check.interval-ms=10000
+#   health-check.max-retries=0
+#   health-check.failure-threshold=1
 
 
-**# Example Scenarios**
+# 	 Leader Election 
+# Both the global leader key (discovery:leader) and per-partition keys
+# (discovery:partition:N:leader) use the same TTL and renewal interval.
+# Renewal uses a Lua GET+EXPIRE script (atomic — no race condition).
+# Identity is the POD_NAME env var injected via the Kubernetes Downward API.
+#
+# Failover times:
+#   Graceful shutdown (@PreDestroy Lua delete) → < 1 s
+#   Hard crash (TTL expiry)                   → ≤ ttl-seconds
+
+# Redis key TTL in seconds
+leader-election.ttl-seconds=10
+
+# Renewal interval in milliseconds (should be < ttl-seconds * 1000 / 3)
+leader-election.renewal-interval-ms=3000
 
 
-# Development (Fast feedback):
-# health-check.interval-ms=5000
-# health-check.max-retries=1
-# health-check.failure-threshold=2
+#  Partition Configuration 
+# Services are mapped to partitions via: abs(hash(serviceName)) % partition.count
+# Each partition has its own leader-election key and Kubernetes Watch stream.
+# Increasing partition.count spreads Watch load across more replicas.
+# Must match the PARTITION_COUNT env var set on the StatefulSet
+# (use configure-cluster.sh to change both at once).
 
-# Production (Stable, tolerant):
-# health-check.interval-ms=30000
-# health-check.max-retries=3
-# health-check.failure-threshold=5
+partition.count=3
 
-# Critical Services (Strict monitoring):
-# health-check.interval-ms=10000
-# health-check.max-retries=0
-# health-check.failure-threshold=1
 
+#  Registry Persistence 
+# The in-memory registry is flushed to a local JSON file on every write.
+# On startup, the registry is reloaded from this file before accepting traffic.
+# In Kubernetes, this path lives inside the pod — it is not shared across replicas.
+
+registry.file.path=./data/registry.json
+
+
+#  Logging 
+# Reduce to INFO in production.
+
+logging.level.com.eda.discovery=DEBUG
+logging.level.org.springframework.data.redis=WARN
+logging.level.org.springframework.kafka=WARN

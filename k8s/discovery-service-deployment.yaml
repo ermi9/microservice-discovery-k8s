@@ -1,10 +1,11 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: discovery-service
   labels:
     app: discovery-service
 spec:
+  serviceName: discovery-service-headless
   replicas: 3
   selector:
     matchLabels:
@@ -17,7 +18,7 @@ spec:
       serviceAccountName: discovery-service
       containers:
       - name: discovery-service
-        image: discovery-service:v3
+        image: discovery-service:v4
         imagePullPolicy: Never
         ports:
         - containerPort: 8080
@@ -43,6 +44,23 @@ spec:
           initialDelaySeconds: 20
           periodSeconds: 5
 ---
+# Headless service required by StatefulSet for stable pod DNS (discovery-service-0.discovery-service-headless, etc.)
+apiVersion: v1
+kind: Service
+metadata:
+  name: discovery-service-headless
+  labels:
+    app: discovery-service
+spec:
+  selector:
+    app: discovery-service
+  clusterIP: None
+  ports:
+  - protocol: TCP
+    port: 8080
+    targetPort: 8080
+---
+# ClusterIP service for external access (unchanged)
 apiVersion: v1
 kind: Service
 metadata:

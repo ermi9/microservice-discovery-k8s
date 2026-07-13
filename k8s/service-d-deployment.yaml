@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: service-d
+  labels:
+    app: service-d
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: service-d
+  template:
+    metadata:
+      labels:
+        app: service-d
+    spec:
+      containers:
+      - name: service-d
+        image: service-d:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+        lifecycle:
+          preStop:
+            exec:
+              command: ["/bin/sh", "-c", "curl -s -X DELETE http://discovery-service:8080/services/service-d || true"]
+        env:
+        - name: APP_NAME
+          value: "service-d"
+        - name: APP_SERVICE_URL
+          value: "http://service-d:8080"
+        - name: DISCOVERY_SERVICE_URL
+          value: "http://discovery-service:8080"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 20
+          periodSeconds: 5

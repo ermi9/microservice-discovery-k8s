@@ -1,52 +1,102 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: registry_db
-      POSTGRES_USER: registry_user
-      POSTGRES_PASSWORD: registry_pass
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - discovery-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U registry_user"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-  redis:
+  # Redis master — source of writes, AOF persistence on.
+  redis-master:
     image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
     networks:
       - discovery-network
     healthcheck:
-      test: ["CMD-SHELL","redis-cli","ping"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 5
-    
 
+  # Redis replica — replicates the master; reads are routed here (REPLICA_PREFERRED).
+  redis-replica:
+    image: redis:7-alpine
+    command: ["redis-server", "--replicaof", "redis-master", "6379", "--appendonly", "yes"]
+    depends_on:
+      redis-master:
+        condition: service_healthy
+    networks:
+      - discovery-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  kafka:
+    image: apache/kafka:3.7.0
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    ports:
+      - "9092:9092"
+    networks:
+      - discovery-network
+    healthcheck:
+      test: ["CMD", "/opt/kafka/bin/kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Central registry — Redis-backed shared state, Kafka publisher, K8s Watch (no-op off-cluster).
   discovery-service:
-    image: discovery-service:v2
+    image: discovery-service:v4
     ports:
       - "8080:8080"
     environment:
-      - REGISTRY_FILE_PATH=/app/data/registry.json
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/registry_db
-      - SPRING_DATASOURCE_USERNAME=registry_user
-      - SPRING_DATASOURCE_PASSWORD=registry_pass
-      - SPRING_JPA_HIBERNATE_DDL_AUTO=update
-      - SPRING_REDIS_HOST=redis
-      - SPRING_REDIS_PORT=6349
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
     depends_on:
-      postgres:
+      redis-master:
         condition: service_healthy
-      redis:
+      redis-replica:
+        condition: service_healthy
+      kafka:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 5s
       timeout: 3s
       retries: 5
+    networks:
+      - discovery-network
+
+  api-gateway:
+    image: api-gateway:latest
+    ports:
+      - "8083:8080"
+    environment:
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - discovery-network
+
+  service-a:
+    image: service-a:latest
+    ports:
+      - "8082:8080"
+    environment:
+      - APP_NAME=service-a
+      - APP_SERVICE_URL=http://service-a:8080
+      - GATEWAY_URL=http://api-gateway:8080
+      - DISCOVERY_SERVICE_URL=http://discovery-service:8080
+    depends_on:
+      discovery-service:
+        condition: service_healthy
+      api-gateway:
+        condition: service_started
     networks:
       - discovery-network
 
@@ -64,25 +114,33 @@ services:
     networks:
       - discovery-network
 
-  service-a:
-    image: service-a:latest
+  service-c:
+    image: service-c:latest
     ports:
-      - "8082:8080"
+      - "8084:8080"
     environment:
-      - APP_NAME=service-a
-      - APP_SERVICE_URL=http://service-a:8080
-      - SERVICE_B_URL=http://service-b:8080
+      - APP_NAME=service-c
+      - APP_SERVICE_URL=http://service-c:8080
       - DISCOVERY_SERVICE_URL=http://discovery-service:8080
     depends_on:
       discovery-service:
         condition: service_healthy
-      service-b:
-        condition: service_started
     networks:
       - discovery-network
 
-volumes:
-  postgres_data:
+  service-d:
+    image: service-d:latest
+    ports:
+      - "8085:8080"
+    environment:
+      - APP_NAME=service-d
+      - APP_SERVICE_URL=http://service-d:8080
+      - DISCOVERY_SERVICE_URL=http://discovery-service:8080
+    depends_on:
+      discovery-service:
+        condition: service_healthy
+    networks:
+      - discovery-network
 
 networks:
   discovery-network:
