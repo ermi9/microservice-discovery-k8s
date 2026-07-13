@@ -1,6 +1,6 @@
 # EDA Microservice Discovery System
 
-An event-driven microservice discovery and routing system built on Kubernetes. Services register themselves on startup, the discovery service tracks their health via Kubernetes Watch streams, and an OpenAPI-aware API gateway updates its routes automatically through a Kafka event pipeline.
+An event-driven microservice discovery and routing system built on Kubernetes. Four business services (order, inventory, payment, shipping) register themselves on startup, the discovery service tracks their health via Kubernetes Watch streams and shares registry state across its replicas in Redis, and an OpenAPI-aware API gateway updates its routes automatically through a Kafka event pipeline.
 
 ---
 
@@ -12,6 +12,10 @@ An event-driven microservice discovery and routing system built on Kubernetes. S
 | Gateway vs Kong / Traefik / AWS API Gateway / Nginx | `docs/GATEWAY_COMPARISON.docx` |
 | Data consistency analysis and failure scenarios | `docs/CONSISTENCY_REPORT_v3.docx` |
 | Architecture diagrams and component reference (in-repo) | `docs/ARCHITECTURE.md` |
+| Architecture decision records (why each choice was made) | `docs/DECISIONS.md` |
+| Operations runbook (deploy, scale, recover) | `docs/RUNBOOK.md` |
+| Benchmark methodology (how every number is measured) | `docs/BENCHMARKS.md` |
+| Reproducible benchmark harness | `benchmarks/` |
 | Configuration reference with all tuneable properties | `docs/application.properties.example` |
 | Discovery service source | `discovery-service/src/` |
 | API gateway source | `api-gateway/src/` |
@@ -27,13 +31,15 @@ An event-driven microservice discovery and routing system built on Kubernetes. S
 ### Local (Docker Compose)
 
 ```bash
-# Build all images
-docker build -t eda-discovery-service:latest ./discovery-service
-docker build -t eda-order-service:latest      ./service-a
-docker build -t eda-inventory-service:latest  ./service-b
-docker build -t eda-api-gateway:latest        ./api-gateway
+# Build all images (tags match docker-compose.yml and the k8s manifests)
+docker build -t discovery-service:v4 ./discovery-service
+docker build -t api-gateway:latest   ./api-gateway
+docker build -t service-a:latest     ./service-a   # order
+docker build -t service-b:latest     ./service-b   # inventory
+docker build -t service-c:latest     ./service-c   # payment
+docker build -t service-d:latest     ./service-d   # shipping
 
-# Start the full stack (Postgres, Redis, Kafka, all services)
+# Start the full stack (Redis master/replica, Kafka, discovery, gateway, 4 services)
 docker compose -f discovery-service/docker-compose.yml up
 ```
 
@@ -42,10 +48,12 @@ docker compose -f discovery-service/docker-compose.yml up
 ```bash
 eval $(minikube docker-env)
 
-docker build -t eda-discovery-service:v4 ./discovery-service
-docker build -t eda-order-service:latest ./service-a
-docker build -t eda-inventory-service:latest ./service-b
-docker build -t eda-api-gateway:latest ./api-gateway
+docker build -t discovery-service:v4 ./discovery-service
+docker build -t api-gateway:latest ./api-gateway
+docker build -t service-a:latest ./service-a
+docker build -t service-b:latest ./service-b
+docker build -t service-c:latest ./service-c
+docker build -t service-d:latest ./service-d
 
 kubectl apply -f k8s/kafka.yaml
 kubectl apply -f k8s/
@@ -92,6 +100,16 @@ curl -X POST http://localhost:8082/orders \
 curl -X POST http://localhost:8082/orders \
   -H "Content-Type: application/json" \
   -d '{"productId":"P003","quantity":1,"customer":"Bob"}' | jq
+
+# Capture a payment for an order (service-c, via gateway)
+curl -X POST http://localhost:8083/route/service-c/payments \
+  -H "Content-Type: application/json" \
+  -d '{"orderId":"ORD-1","amount":59.98}' | jq
+
+# Dispatch a shipment (service-d, via gateway)
+curl -X POST http://localhost:8083/route/service-d/shipments \
+  -H "Content-Type: application/json" \
+  -d '{"orderId":"ORD-1","address":"12 Via Roma, Messina"}' | jq
 ```
 
 ---
@@ -102,10 +120,12 @@ curl -X POST http://localhost:8082/orders \
 .
 ├── configure-cluster.sh               # Adjust partitions and replicas in K8s
 ├── api-gateway/                       # Spring Cloud Gateway — Kafka-driven, OpenAPI-aware
-├── discovery-service/                 # Central registry — leader election, K8s Watch, Kafka publisher
+├── discovery-service/                 # Central registry — Redis-backed shared state, leader election, K8s Watch, Kafka publisher
 │   └── docker-compose.yml             # Full local stack
 ├── service-a/                         # Order service — calls inventory via gateway
 ├── service-b/                         # Inventory service — products, stock reservation
+├── service-c/                         # Payment service — captures payment for an order
+├── service-d/                         # Shipping service — dispatches shipments, issues tracking
 ├── k8s/                               # Kubernetes manifests (StatefulSet, Redis, Kafka, Gateway)
 └── docs/
     ├── FINAL_REPORT_v3.docx           # Full project report — architecture, design, deployment
@@ -123,5 +143,7 @@ curl -X POST http://localhost:8082/orders \
 |--------|---------|------------|
 | Discovery Service | `com.eda` | `eda-discovery-service` |
 | API Gateway | `com.eda` | `eda-api-gateway` |
-| Order Service | `com.eda` | `eda-order-service` |
-| Inventory Service | `com.eda` | `eda-inventory-service` |
+| Order Service (service-a) | `com.eda` | `eda-order-service` |
+| Inventory Service (service-b) | `com.eda` | `eda-inventory-service` |
+| Payment Service (service-c) | `com.eda` | `eda-payment-service` |
+| Shipping Service (service-d) | `com.eda` | `eda-shipping-service` |
