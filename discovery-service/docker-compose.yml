@@ -121,6 +121,34 @@ services:
     networks:
       - discovery-network
 
+  service-c:
+    image: service-c:latest
+    ports:
+      - "8084:8080"
+    environment:
+      - APP_NAME=service-c
+      - APP_SERVICE_URL=http://service-c:8080
+      - DISCOVERY_SERVICE_URL=http://discovery-service:8080
+    depends_on:
+      discovery-service:
+        condition: service_healthy
+    networks:
+      - discovery-network
+
+  service-d:
+    image: service-d:latest
+    ports:
+      - "8085:8080"
+    environment:
+      - APP_NAME=service-d
+      - APP_SERVICE_URL=http://service-d:8080
+      - DISCOVERY_SERVICE_URL=http://discovery-service:8080
+    depends_on:
+      discovery-service:
+        condition: service_healthy
+    networks:
+      - discovery-network
+
 networks:
   discovery-network:
     driver: bridge
