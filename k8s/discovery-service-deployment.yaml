@@ -18,7 +18,7 @@ spec:
       serviceAccountName: discovery-service
       containers:
       - name: discovery-service
-        image: discovery-service:v4
+        image: eda-discovery-service:v4
         imagePullPolicy: Never
         ports:
         - containerPort: 8080
