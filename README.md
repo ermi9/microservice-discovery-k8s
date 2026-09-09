@@ -1,6 +1,8 @@
 # EDA Microservice Discovery System
 
-An event-driven microservice discovery and routing system built on Kubernetes. Services register themselves on startup, the discovery service tracks their health via Kubernetes Watch streams, and an OpenAPI-aware API gateway updates its routes automatically through a Kafka event pipeline.
+An event-driven microservice discovery and routing system built on Kubernetes. Services register themselves on startup, the discovery service tracks their health via Kubernetes Watch streams and parses each service's OpenAPI document into a queryable capability catalog, and an API gateway updates its routes automatically through a Kafka event pipeline.
+
+The registry is Redis-backed and shared by all replicas, so every replica returns the same answer. The Kafka topic `service-events` is the platform's outward contract: it is log-compacted and keyed by service name, so any consumer can rebuild its entire view by replaying it from offset 0. Consumers deserialize by JSON schema into their own local DTO — no Java type is shared across module boundaries.
 
 ---
 
@@ -33,7 +35,7 @@ docker build -t eda-order-service:latest      ./service-a
 docker build -t eda-inventory-service:latest  ./service-b
 docker build -t eda-api-gateway:latest        ./api-gateway
 
-# Start the full stack (Postgres, Redis, Kafka, all services)
+# Start the full stack (Redis master+replica, Kafka, all services)
 docker compose -f discovery-service/docker-compose.yml up
 ```
 
@@ -71,8 +73,20 @@ Scales the discovery service replicas and sets the partition count without rebui
 ## Try It Out
 
 ```bash
-# List registered services
+# List registered services — identical on every replica (Redis-backed)
 curl http://localhost:8080/services | jq
+
+# Is this replica able to serve? (checks Redis; /health is liveness only)
+curl http://localhost:8080/ready | jq
+
+# What operations does a service actually expose? (parsed from its OpenAPI doc)
+curl http://localhost:8080/services/service-b/capabilities | jq
+
+# Validate a single operation before planning a call against it
+curl "http://localhost:8080/services/service-b/supports?operation=GET%20/products" | jq
+
+# Probe statistics this replica collected for a service
+curl http://localhost:8080/services/service-b/metrics | jq
 
 # Gateway route catalog (includes OpenAPI URL per service)
 curl http://localhost:8083/services | jq
@@ -101,8 +115,9 @@ curl -X POST http://localhost:8082/orders \
 ```
 .
 ├── configure-cluster.sh               # Adjust partitions and replicas in K8s
-├── api-gateway/                       # Spring Cloud Gateway — Kafka-driven, OpenAPI-aware
-├── discovery-service/                 # Central registry — leader election, K8s Watch, Kafka publisher
+├── api-gateway/                       # Spring Cloud Gateway — Kafka-driven, OpenAPI pass-through
+├── discovery-service/                 # Redis-backed registry — leader election, K8s Watch,
+│                                      #   capability catalog, Kafka publisher
 │   └── docker-compose.yml             # Full local stack
 ├── service-a/                         # Order service — calls inventory via gateway
 ├── service-b/                         # Inventory service — products, stock reservation
