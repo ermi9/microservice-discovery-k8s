@@ -5,6 +5,8 @@ import com.eda.discovery.model.Service;
 import com.eda.discovery.service.CapabilityCatalogService;
 import com.eda.discovery.service.ServiceRegistry;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -24,6 +26,9 @@ public class DiscoveryController {
 
     @Autowired
     private CapabilityCatalogService capabilityCatalog;
+
+    @Autowired
+    private RedisTemplate<String, Object> redisTemplate;
 
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody Map<String, String> request) {
@@ -119,6 +124,24 @@ public class DiscoveryController {
     @GetMapping("/health")
     public ResponseEntity<String> health() {
         return ResponseEntity.ok("OK");
+    }
+
+    /**
+     * Readiness: this replica can actually do its job.
+     *
+     * <p>Kept separate from {@code /health} and wired to the one dependency every request
+     * path needs. A replica that cannot reach Redis cannot read the registry, so it
+     * reports not-ready and the kubelet stops sending it traffic.
+     */
+    @GetMapping("/ready")
+    public ResponseEntity<?> ready() {
+        try {
+            redisTemplate.getConnectionFactory().getConnection().ping();
+            return ResponseEntity.ok(Map.of("status", "READY", "redis", "UP"));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(Map.of("status", "NOT_READY", "redis", "DOWN", "reason", String.valueOf(e.getMessage())));
+        }
     }
 
     /** Finds a Running pod labelled {@code app=<serviceName>}, or null. */
