@@ -5,7 +5,9 @@ import org.springframework.data.annotation.Transient;
 import org.springframework.data.redis.core.RedisHash;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
 
 @RedisHash("services")
 public class Service {
@@ -15,11 +17,39 @@ public class Service {
 
     private String url;
     private String openapiUrl;
-    private String status; // "healthy", "degraded", "unhealthy", "unknown"
+
+    /** One of {@link ServiceStatus}. */
+    private String status;
+
+    /**
+     * Fencing token of the writer that last set {@link #status}. Monotonic per
+     * partition; an update carrying a lower generation is rejected, so a deposed
+     * leader's in-flight event cannot overwrite its successor's.
+     */
+    private long statusGeneration;
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private int consecutiveFailures = 0;
     private String healthEndpoint = "/health";
+
+    /**
+     * Kafka topic this service consumes work messages from. Derived by convention at
+     * registration — see TopicNamingStrategy — so an event-driven consumer can resolve a
+     * service name to a destination rather than to a base URL.
+     */
+    private String inputTopic;
+
+    /** Kafka topic where a compensation (undo) message for this service is received. */
+    private String compensationTopic;
+
+    /**
+     * Operations this service exposes, as {@code METHOD /path} plus any declared
+     * operationIds, parsed from its OpenAPI document. Empty when the spec has not
+     * been fetched yet or could not be parsed.
+     */
+    private Set<String> capabilities = new LinkedHashSet<>();
+
     @Transient
     private Map<String, Object> pod;
 
@@ -29,7 +59,7 @@ public class Service {
         this.name = name;
         this.url = url;
         this.openapiUrl = openapiUrl;
-        this.status = "unknown";
+        this.status = ServiceStatus.UNKNOWN;
         this.consecutiveFailures = 0;
         this.healthEndpoint = "/health";
         this.createdAt = LocalDateTime.now();
@@ -117,5 +147,42 @@ public class Service {
 
     public void setPod(Map<String, Object> pod) {
         this.pod = pod;
+    }
+
+    public long getStatusGeneration() {
+        return statusGeneration;
+    }
+
+    public void setStatusGeneration(long statusGeneration) {
+        this.statusGeneration = statusGeneration;
+    }
+
+    public String getInputTopic() {
+        return inputTopic;
+    }
+
+    public void setInputTopic(String inputTopic) {
+        this.inputTopic = inputTopic;
+    }
+
+    public String getCompensationTopic() {
+        return compensationTopic;
+    }
+
+    public void setCompensationTopic(String compensationTopic) {
+        this.compensationTopic = compensationTopic;
+    }
+
+    public Set<String> getCapabilities() {
+        return capabilities;
+    }
+
+    public void setCapabilities(Set<String> capabilities) {
+        this.capabilities = (capabilities == null) ? new LinkedHashSet<>() : capabilities;
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    public boolean supports(String operation) {
+        return capabilities != null && capabilities.contains(operation);
     }
 }
