@@ -2,6 +2,7 @@ package com.eda.discovery.controller;
 
 import com.eda.discovery.kubernetes.KubernetesDiscoveryService;
 import com.eda.discovery.model.Service;
+import com.eda.discovery.service.CapabilityCatalogService;
 import com.eda.discovery.service.ServiceRegistry;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -9,6 +10,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/")
@@ -19,6 +21,9 @@ public class DiscoveryController {
 
     @Autowired
     private KubernetesDiscoveryService kubernetesDiscoveryService;
+
+    @Autowired
+    private CapabilityCatalogService capabilityCatalog;
 
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody Map<String, String> request) {
@@ -62,6 +67,40 @@ public class DiscoveryController {
 
         service.setPod(findPodForService(name));
         return ResponseEntity.ok(service);
+    }
+
+    /**
+     * The operations a service actually exposes, parsed from its OpenAPI document.
+     * Lets a caller validate a plan step against a real capability instead of assuming it.
+     */
+    @GetMapping("/services/{name}/capabilities")
+    public ResponseEntity<?> getCapabilities(@PathVariable String name,
+                                             @RequestParam(defaultValue = "false") boolean refresh) {
+        Service service = serviceRegistry.getServiceByName(name);
+        if (service == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        Set<String> capabilities = refresh
+                ? capabilityCatalog.refresh(name)
+                : service.getCapabilities();
+
+        return ResponseEntity.ok(Map.of(
+                "service", name,
+                "openapiUrl", String.valueOf(service.getOpenapiUrl()),
+                "capabilities", capabilities));
+    }
+
+    /** Direct predicate for plan validation: does this service support this operation? */
+    @GetMapping("/services/{name}/supports")
+    public ResponseEntity<?> supports(@PathVariable String name, @RequestParam String operation) {
+        if (serviceRegistry.getServiceByName(name) == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(Map.of(
+                "service", name,
+                "operation", operation,
+                "supported", capabilityCatalog.supports(name, operation)));
     }
 
     @DeleteMapping("/services/{name}")
