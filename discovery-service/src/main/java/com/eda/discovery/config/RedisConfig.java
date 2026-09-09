@@ -2,6 +2,7 @@ package com.eda.discovery.config;
 
 import io.lettuce.core.ReadFrom;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -50,13 +51,30 @@ public class RedisConfig {
         }
     }
 
+    // Bound to the spring.data.redis.* properties, with the deployed hostnames as
+    // defaults, so the topology can be repointed without a rebuild.
+    @Value("${spring.data.redis.host:redis-master}")
+    private String masterHost;
+
+    @Value("${spring.data.redis.port:6379}")
+    private int masterPort;
+
+    @Value("${spring.data.redis.replica-host:redis-replica}")
+    private String replicaHost;
+
+    @Value("${spring.data.redis.replica-port:6379}")
+    private int replicaPort;
+
     // --- MASTER/REPLICA TOPOLOGY (key-value operations) ---
     @Primary
     @Bean
     public LettuceConnectionFactory redisConnectionFactory() {
         // Route writes to the master, add the replica nodes
-        RedisStaticMasterReplicaConfiguration topology = new RedisStaticMasterReplicaConfiguration("redis-master", 6379);
-        topology.addNode("redis-replica", 6379);
+        RedisStaticMasterReplicaConfiguration topology =
+                new RedisStaticMasterReplicaConfiguration(masterHost, masterPort);
+        if (!replicaHost.isBlank() && !replicaHost.equals(masterHost)) {
+            topology.addNode(replicaHost, replicaPort);
+        }
 
         // Force reads to be distributed across the replicas
         LettuceClientConfiguration clientConfig = LettuceClientConfiguration.builder()
@@ -69,7 +87,7 @@ public class RedisConfig {
     // Separate direct-master connection for pub/sub — pub/sub must go to master, not replicas
     @Bean("pubSubConnectionFactory")
     public LettuceConnectionFactory pubSubConnectionFactory() {
-        return new LettuceConnectionFactory("redis-master", 6379);
+        return new LettuceConnectionFactory(masterHost, masterPort);
     }
 
     // StringRedisTemplate used for pub/sub publishing (convertAndSend)

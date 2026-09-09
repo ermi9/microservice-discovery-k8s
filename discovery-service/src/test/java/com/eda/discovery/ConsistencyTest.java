@@ -1,9 +1,11 @@
 package com.eda.discovery;
 
 import com.eda.discovery.config.HealthCheckConfig;
+import com.eda.discovery.kafka.ServiceEventPublisher;
 import com.eda.discovery.model.Service;
 import com.eda.discovery.repository.ServiceRepository;
 import com.eda.discovery.service.ServiceRegistry;
+import com.eda.discovery.service.TopicNamingStrategy;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -46,6 +48,12 @@ class ConsistencyTest {
 
     @Mock
     private ValueOperations<String, Object> valueOps;
+
+    @Mock
+    private ServiceEventPublisher eventPublisher;
+
+    @Mock
+    private TopicNamingStrategy topicNaming;
 
     @InjectMocks
     private ServiceRegistry serviceRegistry;

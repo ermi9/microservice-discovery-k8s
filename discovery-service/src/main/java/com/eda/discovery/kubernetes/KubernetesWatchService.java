@@ -2,6 +2,7 @@ package com.eda.discovery.kubernetes;
 
 import com.eda.discovery.model.RelayEvent;
 import com.eda.discovery.model.Service;
+import com.eda.discovery.model.ServiceStatus;
 import com.eda.discovery.service.PartitionLeaderElectionService;
 import com.eda.discovery.service.PartitionManager;
 import com.eda.discovery.service.ServiceRegistry;
@@ -254,15 +255,15 @@ public class KubernetesWatchService {
                         String phase = (String) statusObj.get("phase");
                         boolean ready = isPodReady(statusObj);
                         if ("Running".equals(phase) && ready) {
-                            newStatus = "healthy";
+                            newStatus = ServiceStatus.HEALTHY;
                         } else if ("Running".equals(phase)) {
-                            newStatus = "not-ready";
+                            newStatus = ServiceStatus.NOT_READY;
                         } else {
-                            newStatus = "unavailable";
+                            newStatus = ServiceStatus.UNAVAILABLE;
                         }
                     }
                 }
-                case "DELETED" -> newStatus = "unavailable";
+                case "DELETED" -> newStatus = ServiceStatus.UNAVAILABLE;
             }
 
             if (newStatus != null) {
