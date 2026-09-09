@@ -25,9 +25,14 @@ public class GatewayController {
 
     /**
      * Lists every service the gateway currently routes to, along with the URL
-     * where its live OpenAPI spec can be fetched. Unlike Kong, Traefik, or AWS API
-     * Gateway, this gateway is schema-aware: it knows what each upstream service
-     * actually exposes — not just how to reach it.
+     * where its live OpenAPI spec can be fetched.
+     *
+     * <p>Note on terminology: this gateway is <em>schema-transparent</em>, not
+     * schema-aware. It knows where each service's spec lives and proxies it through
+     * one stable URL ({@link #getOpenApiSpec}), but it does not parse or interpret
+     * specs and makes no routing decision based on their contents. The structured
+     * capability catalog — "does service X support operation Y?" — is built and
+     * served by the discovery-service at {@code GET /services/{name}/capabilities}.
      */
     @GetMapping("/services")
     public Collection<RouteInfo> listServices() {
@@ -39,6 +44,9 @@ public class GatewayController {
      * directly to that service's /v3/api-docs endpoint. Clients (Swagger UI,
      * Postman, code generators) can therefore discover any microservice's full
      * contract through a single, stable gateway URL.
+     *
+     * <p>This is a byte-for-byte pass-through: the spec is streamed as an opaque
+     * String and is never deserialized or inspected here.
      */
     @GetMapping("/openapi/{serviceName}")
     public Mono<String> getOpenApiSpec(@PathVariable String serviceName) {

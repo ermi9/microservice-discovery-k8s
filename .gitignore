@@ -38,3 +38,7 @@ build/
 out/
 *.o
 *.class
+
+# Python (benchmark harness)
+__pycache__/
+*.py[cod]

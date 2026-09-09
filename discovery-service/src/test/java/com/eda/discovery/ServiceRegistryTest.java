@@ -6,6 +6,7 @@ import com.eda.discovery.model.Service;
 import com.eda.discovery.model.ServiceEvent;
 import com.eda.discovery.repository.ServiceRepository;
 import com.eda.discovery.service.ServiceRegistry;
+import com.eda.discovery.service.TopicNamingStrategy;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -24,8 +25,8 @@ import static org.mockito.Mockito.when;
 
 /**
  * Behavioural tests for the Redis-backed {@link ServiceRegistry}: registration,
- * status updates, and deregistration all persist through the shared repository and
- * emit the correct routing events.
+ * status updates, and deregistration all go through the shared repository and emit
+ * the correct routing events.
  */
 @ExtendWith(MockitoExtension.class)
 class ServiceRegistryTest {
@@ -41,6 +42,9 @@ class ServiceRegistryTest {
 
     @Mock
     private RedisTemplate<String, Object> redisTemplate;
+
+    @Mock
+    private TopicNamingStrategy topicNaming;
 
     @InjectMocks
     private ServiceRegistry serviceRegistry;
@@ -94,7 +98,7 @@ class ServiceRegistryTest {
     }
 
     @Test
-    void deregister_marks_service_unavailable_and_publishes_deregistered_event() {
+    void deregister_removes_the_entry_and_publishes_deregistered_event() {
         Service existing = new Service("service-c", "http://service-c:8080",
                 "http://service-c:8080/v3/api-docs");
         existing.setStatus("healthy");
@@ -102,13 +106,30 @@ class ServiceRegistryTest {
 
         serviceRegistry.deregister("service-c");
 
-        verify(serviceRepository).save(existing);
-        assertThat(existing.getStatus()).isEqualTo("unavailable");
+        // The entry is removed rather than flipped to unavailable, so the service stops
+        // appearing in GET /services and a replaying consumer can drop it from its table.
+        verify(serviceRepository).deleteById("service-c");
+        verify(serviceRepository, never()).save(any(Service.class));
 
         ArgumentCaptor<ServiceEvent> event = ArgumentCaptor.forClass(ServiceEvent.class);
         verify(eventPublisher).publish(event.capture());
         assertThat(event.getValue().getType()).isEqualTo(ServiceEvent.Type.SERVICE_DEREGISTERED);
         assertThat(event.getValue().getStatus()).isEqualTo("unavailable");
+    }
+
+    @Test
+    void updateServiceStatus_drops_an_update_from_a_deposed_leader() {
+        Service existing = new Service("service-e", "http://service-e:8080",
+                "http://service-e:8080/v3/api-docs");
+        existing.setStatus("healthy");
+        existing.setStatusGeneration(9L);
+        when(serviceRepository.findById("service-e")).thenReturn(Optional.of(existing));
+
+        serviceRegistry.updateServiceStatus("service-e", "unavailable", 4L);
+
+        verify(serviceRepository, never()).save(any(Service.class));
+        verify(eventPublisher, never()).publish(any(ServiceEvent.class));
+        assertThat(existing.getStatus()).isEqualTo("healthy");
     }
 
     @Test

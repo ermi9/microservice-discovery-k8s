@@ -18,7 +18,7 @@ spec:
       serviceAccountName: discovery-service
       containers:
       - name: discovery-service
-        image: discovery-service:v4
+        image: eda-discovery-service:v4
         imagePullPolicy: Never
         ports:
         - containerPort: 8080
@@ -37,12 +37,16 @@ spec:
             port: 8080
           initialDelaySeconds: 30
           periodSeconds: 10
+        # Readiness checks Redis reachability (/ready); liveness only checks that the
+        # process serves HTTP (/health). A pod that has lost Redis cannot read the
+        # registry, so it must drop out of readiness without being restarted.
         readinessProbe:
           httpGet:
-            path: /health
+            path: /ready
             port: 8080
           initialDelaySeconds: 20
           periodSeconds: 5
+          failureThreshold: 3
 ---
 # Headless service required by StatefulSet for stable pod DNS (discovery-service-0.discovery-service-headless, etc.)
 apiVersion: v1

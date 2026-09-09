@@ -2,13 +2,25 @@ package com.eda.discovery.service;
 
 import com.eda.discovery.kubernetes.KubernetesDiscoveryService;
 import com.eda.discovery.model.Service;
-import com.eda.discovery.repository.ServiceRepository;
+import com.eda.discovery.model.ServiceStatus;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+
 import java.util.List;
 import java.util.Map;
 
+/**
+ * One-shot reconciliation against the Kubernetes API.
+ *
+ * <p>Not scheduled: {@code KubernetesWatchService} replaced the polling loop and is the
+ * authoritative status source. This remains as a manual fallback for the case where the
+ * watch stream is wedged and a single forced resync is wanted.
+ *
+ * <p>Status is written through {@link ServiceRegistry#updateServiceStatus} like every
+ * other writer, never straight to the repository: the registry is what applies the
+ * generation fence and publishes to {@code service-events}, so writing around it would
+ * change stored state without any consumer hearing about it.
+ */
 @Component
 public class KubernetesPollingService {
 
@@ -19,45 +31,36 @@ public class KubernetesPollingService {
     private KubernetesDiscoveryService kubernetesDiscoveryService;
 
     @Autowired
-    private ServiceRepository serviceRepository;
-
-    @Autowired
     private LeaderElectionService leaderElectionService;
 
-    // No longer scheduled — KubernetesWatchService replaced the polling loop (Task 2).
-    // Kept here as a manual fallback; can be called directly if the watch stream fails and
-    // a one-time sync is needed.
     public void pollKubernetesStatus() {
         if (!leaderElectionService.isLeader()) return;
-        List<Service> services = serviceRegistry.getAllServices();
 
-        for (Service service : services) {
+        for (Service service : serviceRegistry.getAllServices()) {
             try {
-                String labelSelector = "app=" + service.getName();
-                List<Map<String, Object>> pods = kubernetesDiscoveryService.getPodsByLabel("default", labelSelector);
-                
-                // Find first running and ready pod
+                List<Map<String, Object>> pods = kubernetesDiscoveryService
+                        .getPodsByLabel("default", "app=" + service.getName());
+
                 Map<String, Object> readyPod = null;
                 for (Map<String, Object> pod : pods) {
                     Boolean isReady = (Boolean) pod.get("ready");
-                    String status = (String) pod.get("status");
-                    
-                    if (isReady != null && isReady && "Running".equals(status)) {
+                    String phase = (String) pod.get("status");
+                    if (Boolean.TRUE.equals(isReady) && "Running".equals(phase)) {
                         readyPod = pod;
                         break;
                     }
                 }
-                
-                // Update service status based on pod readiness (pod data is fetched live by controller, not stored)
+
+                String status;
                 if (readyPod != null) {
-                    service.setStatus("healthy");
+                    status = ServiceStatus.HEALTHY;
                 } else if (pods.isEmpty()) {
-                    service.setStatus("unavailable");
+                    status = ServiceStatus.UNAVAILABLE;
                 } else {
-                    service.setStatus("not-ready");
+                    status = ServiceStatus.NOT_READY;
                 }
-                service.setUpdatedAt(java.time.LocalDateTime.now());
-                serviceRepository.save(service);
+
+                serviceRegistry.updateServiceStatus(service.getName(), status);
 
             } catch (Exception e) {
                 System.err.println("Error polling K8s for service " + service.getName() + ": " + e.getMessage());

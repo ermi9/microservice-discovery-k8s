@@ -1,8 +1,11 @@
+# Full local stack, matching the deployed architecture.
+#
+# The registry is Redis-only — there is no datasource and no file-backed registry. The
+# topology below (one master, one replica) is what RedisConfig expects: writes and
+# pub/sub to the master, reads preferring the replica.
 services:
-  # Redis master — source of writes, AOF persistence on.
   redis-master:
     image: redis:7-alpine
-    command: ["redis-server", "--appendonly", "yes"]
     networks:
       - discovery-network
     healthcheck:
@@ -11,10 +14,9 @@ services:
       timeout: 3s
       retries: 5
 
-  # Redis replica — replicates the master; reads are routed here (REPLICA_PREFERRED).
   redis-replica:
     image: redis:7-alpine
-    command: ["redis-server", "--replicaof", "redis-master", "6379", "--appendonly", "yes"]
+    command: ["redis-server", "--replicaof", "redis-master", "6379"]
     depends_on:
       redis-master:
         condition: service_healthy
@@ -49,13 +51,17 @@ services:
       timeout: 5s
       retries: 5
 
-  # Central registry — Redis-backed shared state, Kafka publisher, K8s Watch (no-op off-cluster).
   discovery-service:
-    image: discovery-service:v4
+    image: eda-discovery-service:latest
     ports:
       - "8080:8080"
     environment:
+      - SPRING_DATA_REDIS_HOST=redis-master
+      - SPRING_DATA_REDIS_PORT=6379
+      - SPRING_DATA_REDIS_REPLICA_HOST=redis-replica
       - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      # Single node locally: one partition leader, no peer relay to coordinate with.
+      - PARTITION_COUNT=1
     depends_on:
       redis-master:
         condition: service_healthy
@@ -64,15 +70,16 @@ services:
       kafka:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      # /ready, not /health — readiness means Redis is actually reachable.
+      test: ["CMD", "curl", "-f", "http://localhost:8080/ready"]
       interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 10
     networks:
       - discovery-network
 
   api-gateway:
-    image: api-gateway:latest
+    image: eda-api-gateway:latest
     ports:
       - "8083:8080"
     environment:
@@ -83,8 +90,22 @@ services:
     networks:
       - discovery-network
 
+  service-b:
+    image: eda-inventory-service:latest
+    ports:
+      - "8081:8080"
+    environment:
+      - APP_NAME=service-b
+      - APP_SERVICE_URL=http://service-b:8080
+      - DISCOVERY_SERVICE_URL=http://discovery-service:8080
+    depends_on:
+      discovery-service:
+        condition: service_healthy
+    networks:
+      - discovery-network
+
   service-a:
-    image: service-a:latest
+    image: eda-order-service:latest
     ports:
       - "8082:8080"
     environment:
@@ -97,20 +118,6 @@ services:
         condition: service_healthy
       api-gateway:
         condition: service_started
-    networks:
-      - discovery-network
-
-  service-b:
-    image: service-b:latest
-    ports:
-      - "8081:8080"
-    environment:
-      - APP_NAME=service-b
-      - APP_SERVICE_URL=http://service-b:8080
-      - DISCOVERY_SERVICE_URL=http://discovery-service:8080
-    depends_on:
-      discovery-service:
-        condition: service_healthy
     networks:
       - discovery-network
 

@@ -30,7 +30,10 @@ spec:
       containers:
       - name: redis
         image: redis:7-alpine
-        imagePullPolicy: Never
+        # Public image: Never would fail with ErrImageNeverPull on any cluster whose
+        # local daemon has not already cached it. Never is only correct for the
+        # locally-built eda-* images.
+        imagePullPolicy: IfNotPresent
         command:
         - redis-server
         - "--appendonly"
@@ -94,7 +97,10 @@ spec:
       containers:
       - name: redis
         image: redis:7-alpine
-        imagePullPolicy: Never
+        # Public image: Never would fail with ErrImageNeverPull on any cluster whose
+        # local daemon has not already cached it. Never is only correct for the
+        # locally-built eda-* images.
+        imagePullPolicy: IfNotPresent
         command:
         - redis-server
         - "--replicaof"

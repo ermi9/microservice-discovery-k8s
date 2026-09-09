@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: service-b
-        image: service-b:latest
+        image: eda-inventory-service:latest
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8080

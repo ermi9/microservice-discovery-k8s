@@ -1,5 +1,15 @@
 package com.eda.gateway.model;
 
+/**
+ * The gateway's own local view of the discovery change-stream event.
+ *
+ * <p>Deliberately a separate class from {@code com.eda.discovery.model.ServiceEvent}:
+ * the contract between the two modules is the JSON <em>schema</em> on the
+ * {@code service-events} topic, not a shared Java type. Neither module depends on the
+ * other's classpath. Unknown fields are tolerated (Spring Kafka's JsonDeserializer
+ * disables FAIL_ON_UNKNOWN_PROPERTIES), so the producer can add fields without
+ * breaking this consumer.
+ */
 public class ServiceEvent {
 
     public enum Type {
@@ -14,6 +24,17 @@ public class ServiceEvent {
     private String openapiUrl;
     private String status;
     private String timestamp;
+
+    /**
+     * Fencing token stamped by the partition leader that produced this event.
+     * Monotonic per partition (Redis INCR on leadership change). Used to discard
+     * events emitted by a deposed leader — see ServiceEventConsumer.
+     */
+    private long generation;
+
+    /** Kafka destinations — consumed by the choreography layer, ignored by the gateway. */
+    private String inputTopic;
+    private String compensationTopic;
 
     public ServiceEvent() {}
 
@@ -34,4 +55,13 @@ public class ServiceEvent {
 
     public String getTimestamp() { return timestamp; }
     public void setTimestamp(String timestamp) { this.timestamp = timestamp; }
+
+    public long getGeneration() { return generation; }
+    public void setGeneration(long generation) { this.generation = generation; }
+
+    public String getInputTopic() { return inputTopic; }
+    public void setInputTopic(String inputTopic) { this.inputTopic = inputTopic; }
+
+    public String getCompensationTopic() { return compensationTopic; }
+    public void setCompensationTopic(String compensationTopic) { this.compensationTopic = compensationTopic; }
 }
