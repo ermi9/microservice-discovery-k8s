@@ -1,6 +1,7 @@
 package com.eda.discovery.controller;
 
 import com.eda.discovery.kubernetes.KubernetesDiscoveryService;
+import com.eda.discovery.metrics.HealthMetrics;
 import com.eda.discovery.model.Service;
 import com.eda.discovery.service.CapabilityCatalogService;
 import com.eda.discovery.service.ServiceRegistry;
@@ -72,6 +73,34 @@ public class DiscoveryController {
 
         service.setPod(findPodForService(name));
         return ResponseEntity.ok(service);
+    }
+
+    /**
+     * Probe statistics this replica has collected for a service — check count, successes,
+     * failures, success rate, last observed latency.
+     *
+     * <p>Node-local by design: the numbers describe what this replica observed.
+     */
+    @GetMapping("/services/{name}/metrics")
+    public ResponseEntity<?> getServiceMetrics(@PathVariable String name) {
+        if (serviceRegistry.getServiceByName(name) == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        HealthMetrics metrics = serviceRegistry.getMetricsForService(name);
+        if (metrics == null) {
+            return ResponseEntity.ok(Map.of(
+                    "service", name,
+                    "message", "No probe has run on this replica yet"));
+        }
+
+        return ResponseEntity.ok(Map.of(
+                "service", metrics.getServiceName(),
+                "totalChecks", metrics.getTotalChecks(),
+                "successCount", metrics.getSuccessCount(),
+                "failureCount", metrics.getFailureCount(),
+                "successRate", metrics.getSuccessRate(),
+                "lastResponseMs", metrics.getLastResponseMs()));
     }
 
     /**

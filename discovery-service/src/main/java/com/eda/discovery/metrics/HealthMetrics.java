@@ -25,6 +25,34 @@ public class HealthMetrics {
         failureCount.incrementAndGet();
     }
 
+    // Served over HTTP by DiscoveryController at /services/{name}/metrics.
+
+    public String getServiceName() {
+        return serviceName;
+    }
+
+    public long getTotalChecks() {
+        return totalChecks.get();
+    }
+
+    public long getSuccessCount() {
+        return successCount.get();
+    }
+
+    public long getFailureCount() {
+        return failureCount.get();
+    }
+
+    public long getLastResponseMs() {
+        return lastResponseMs;
+    }
+
+    /** Success ratio over all recorded checks; 0 when nothing has been checked yet. */
+    public double getSuccessRate() {
+        long total = totalChecks.get();
+        return total == 0 ? 0.0 : (double) successCount.get() / total;
+    }
+
     @Override
     public String toString() {
         long total = totalChecks.get();
