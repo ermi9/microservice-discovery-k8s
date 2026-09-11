@@ -52,7 +52,7 @@ flowchart TB
 
 | Component | Role |
 |---|---|
-| `discovery-service` (3 replicas, StatefulSet) | Registry owner. Per-partition leaders watch Kubernetes and publish events; all replicas serve identical reads from shared Redis. Parses each service's OpenAPI document into a capability catalog. |
+| `discovery-service` (3 replicas, StatefulSet) | Registry owner. Per-partition leaders watch Kubernetes and publish events; all replicas serve identical reads from shared Redis. |
 | Redis (1 master + 2 replicas) | **The registry itself**, plus coordination — leader-election keys, `resourceVersion` keys, pub/sub relay channel. Every replica reads and writes the same service records, so a registration on one replica is immediately visible on all of them. |
 | Kafka (single broker, KRaft) | Event bus and outward contract. Carries `SERVICE_REGISTERED`, `SERVICE_DEREGISTERED`, `STATUS_CHANGED`, each stamped with a fencing `generation` and the service's Kafka destinations. Keyed by service name for per-service ordering; **log-compacted**, so replaying from offset 0 rebuilds current state. |
 | `api-gateway` (Spring Cloud Gateway) | Consumes Kafka events, maintains live routing table, exposes `/services` catalog and `/openapi/{name}` spec proxy. Schema-*transparent*: it proxies specs, it does not parse them. |
@@ -206,3 +206,32 @@ Each event carries `inputTopic` and `compensationTopic` (derived by convention f
 service name — `<name>.in` and `<name>.compensate`), so a consumer can resolve a logical
 service name to a Kafka destination from its local table without an HTTP call to
 discovery.
+
+### What is, and is not, in the reuse contract
+
+A downstream system consumes discovery **only** via the `service-events` Kafka stream,
+with its own event DTO, as described above. Two parts of discovery stay in the codebase
+but are deliberately outside that contract:
+
+- **The gateway HTTP proxy** (`/route/{name}/**`, `RouteRegistry`, `GatewayController`).
+  The gateway is a chokepoint kept out of a downstream system's data path; a consumer
+  that routed through it would inherit that chokepoint.
+- **The read endpoints** (`GET /services`, `GET /services/{name}`). Useful for debugging
+  and for humans. A consumer builds its resolution table from the replayable stream
+  instead, so it does not depend on discovery being reachable at resolve time.
+
+Both remain supported for their own callers. The boundary is the contract, not their
+absence.
+
+### Known edges on the registration path
+
+- **Registration is synchronous on the event publish.** `register()` fails if the broker
+  is unreachable, rather than accepting the registration and letting the publish fail
+  asynchronously. The *routing* path stays non-blocking — consumers resolve from their
+  local table built off the replayable stream — but the *registration* path does not.
+- **Registration writes come from the receiving replica, not the partition leader.**
+  Single-writer-per-partition therefore holds for the status path, where the leader is
+  the only writer, but not universally: any replica can accept a registration.
+
+Both are recorded here as documented limits rather than changed, so "black box" means a
+documented interface with known edges.

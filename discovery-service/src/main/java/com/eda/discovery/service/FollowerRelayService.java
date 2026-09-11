@@ -140,10 +140,6 @@ public class FollowerRelayService {
         return "not-ready";
     }
 
-    public String getWarmStatus(String serviceName) {
-        return warmState.get(serviceName);
-    }
-
     @PreDestroy
     public void shutdown() {
         executor.shutdownNow();
