@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'ermi9/**']
+  pull_request:
+
+jobs:
+  verify:
+    name: ${{ matrix.module }}
+    runs-on: ubuntu-latest   # ships with Docker; the *IT tests start Kafka via Testcontainers
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        module:
+          - discovery-service
+          - api-gateway
+          - service-a
+          - service-b
+          - service-c
+          - service-d
+    defaults:
+      run:
+        working-directory: ${{ matrix.module }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+          cache-dependency-path: '**/pom.xml'
+
+      - name: Build and test
+        run: mvn -B --no-transfer-progress verify
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-${{ matrix.module }}
+          path: |
+            ${{ matrix.module }}/target/surefire-reports/
+            ${{ matrix.module }}/target/failsafe-reports/
+          if-no-files-found: ignore
