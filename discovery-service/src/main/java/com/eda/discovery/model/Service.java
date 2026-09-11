@@ -5,9 +5,7 @@ import org.springframework.data.annotation.Transient;
 import org.springframework.data.redis.core.RedisHash;
 
 import java.time.LocalDateTime;
-import java.util.LinkedHashSet;
 import java.util.Map;
-import java.util.Set;
 
 @RedisHash("services")
 public class Service {
@@ -42,13 +40,6 @@ public class Service {
 
     /** Kafka topic where a compensation (undo) message for this service is received. */
     private String compensationTopic;
-
-    /**
-     * Operations this service exposes, as {@code METHOD /path} plus any declared
-     * operationIds, parsed from its OpenAPI document. Empty when the spec has not
-     * been fetched yet or could not be parsed.
-     */
-    private Set<String> capabilities = new LinkedHashSet<>();
 
     @Transient
     private Map<String, Object> pod;
@@ -171,18 +162,5 @@ public class Service {
 
     public void setCompensationTopic(String compensationTopic) {
         this.compensationTopic = compensationTopic;
-    }
-
-    public Set<String> getCapabilities() {
-        return capabilities;
-    }
-
-    public void setCapabilities(Set<String> capabilities) {
-        this.capabilities = (capabilities == null) ? new LinkedHashSet<>() : capabilities;
-        this.updatedAt = LocalDateTime.now();
-    }
-
-    public boolean supports(String operation) {
-        return capabilities != null && capabilities.contains(operation);
     }
 }

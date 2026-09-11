@@ -52,7 +52,7 @@ flowchart TB
 
 | Component | Role |
 |---|---|
-| `discovery-service` (3 replicas, StatefulSet) | Registry owner. Per-partition leaders watch Kubernetes and publish events; all replicas serve identical reads from shared Redis. Parses each service's OpenAPI document into a capability catalog. |
+| `discovery-service` (3 replicas, StatefulSet) | Registry owner. Per-partition leaders watch Kubernetes and publish events; all replicas serve identical reads from shared Redis. |
 | Redis (1 master + 2 replicas) | **The registry itself**, plus coordination — leader-election keys, `resourceVersion` keys, pub/sub relay channel. Every replica reads and writes the same service records, so a registration on one replica is immediately visible on all of them. |
 | Kafka (single broker, KRaft) | Event bus and outward contract. Carries `SERVICE_REGISTERED`, `SERVICE_DEREGISTERED`, `STATUS_CHANGED`, each stamped with a fencing `generation` and the service's Kafka destinations. Keyed by service name for per-service ordering; **log-compacted**, so replaying from offset 0 rebuilds current state. |
 | `api-gateway` (Spring Cloud Gateway) | Consumes Kafka events, maintains live routing table, exposes `/services` catalog and `/openapi/{name}` spec proxy. Schema-*transparent*: it proxies specs, it does not parse them. |

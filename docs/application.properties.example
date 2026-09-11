@@ -59,17 +59,6 @@ topics.input.suffix=.in
 topics.compensation.suffix=.compensate
 
 
-#   Capability catalog
-# Each registered service's OpenAPI document is fetched and parsed into a set of
-# operations ("POST /products/{id}/reserve", plus declared operationIds), queryable at
-# GET /services/{name}/capabilities and GET /services/{name}/supports?operation=...
-# Refresh is leader-gated so three replicas don't all hit every spec endpoint.
-# Fetching never happens during registration — a slow spec must not fail a valid
-# registration.
-
-capabilities.refresh-interval-ms=60000
-
-
 #   Health Check
 # One replica at a time runs a cycle, guarded by the Redis lock discovery:healthcheck:lock
 # (TTL = 3x the interval so it outlives a cycle).

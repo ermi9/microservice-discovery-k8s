@@ -98,7 +98,6 @@ public class ServiceRegistry {
             // Carry forward everything the registering service does not know about itself.
             service.setCreatedAt(existing.getCreatedAt());
             service.setStatusGeneration(existing.getStatusGeneration());
-            service.setCapabilities(existing.getCapabilities());
         }
 
         service.setStatus(ServiceStatus.UNKNOWN);
