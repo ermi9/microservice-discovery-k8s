@@ -1,7 +1,7 @@
 FROM eclipse-temurin:17-jdk
 WORKDIR /app
 
-COPY target/testProj-0.0.1-SNAPSHOT.jar app.jar
+COPY target/eda-discovery-service-*.jar app.jar
 
 EXPOSE 8080
 
