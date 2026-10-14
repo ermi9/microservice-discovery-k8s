@@ -45,3 +45,62 @@ jobs:
             ${{ matrix.module }}/target/surefire-reports/
             ${{ matrix.module }}/target/failsafe-reports/
           if-no-files-found: ignore
+
+  # Once a module is verified on a push, its image goes to the GitHub Container Registry,
+  # tagged with the commit and the branch (and latest on main), for deployments to pull.
+  publish:
+    name: publish ${{ matrix.module }}
+    needs: verify
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        module:
+          - discovery-service
+          - api-gateway
+          - service-a
+          - service-b
+          - service-c
+          - service-d
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+          cache-dependency-path: '**/pom.xml'
+
+      - name: Package (already verified above)
+        working-directory: ${{ matrix.module }}
+        run: mvn -B --no-transfer-progress package -DskipTests
+
+      - name: Tag for this branch
+        id: tags
+        run: |
+          branch=$(echo "${GITHUB_REF_NAME}" | tr '/' '-')
+          image=ghcr.io/ermi9/${{ matrix.module }}
+          {
+            echo "list<<EOF"
+            echo "$image:${GITHUB_SHA}"
+            echo "$image:$branch"
+            if [ "${GITHUB_REF_NAME}" = "main" ]; then echo "$image:latest"; fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.module }}
+          push: true
+          tags: ${{ steps.tags.outputs.list }}
